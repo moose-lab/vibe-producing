@@ -1,0 +1,1201 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Vibe Origin — 你脑子里有音乐</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=Noto+Serif+SC:wght@300;400;600&family=JetBrains+Mono:wght@400;500;600&display=swap');
+
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg-deep: #060608;
+    --bg: #0c0c10;
+    --bg-elevated: #141418;
+    --bg-hover: #1a1a20;
+    --surface: #1e1e24;
+    --border: rgba(255,255,255,0.06);
+    --border-hover: rgba(255,255,255,0.12);
+    --text: #eceae5;
+    --text-secondary: rgba(236,234,229,0.55);
+    --text-dim: rgba(236,234,229,0.3);
+    --green: #1ed760;
+    --green-dim: rgba(30,215,96,0.15);
+    --green-glow: rgba(30,215,96,0.4);
+    --orange: #ff6b2b;
+    --red: #e84040;
+    --purple: #a855f7;
+    --radius: 12px;
+    --radius-sm: 8px;
+    --radius-xs: 6px;
+  }
+
+  body {
+    background: var(--bg-deep);
+    color: var(--text);
+    font-family: 'Outfit', -apple-system, sans-serif;
+    height: 100vh;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+  }
+
+  /* === TOP NAV === */
+  .topnav {
+    height: 48px;
+    background: rgba(6,6,8,0.85);
+    backdrop-filter: blur(20px);
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    padding: 0 16px;
+    gap: 12px;
+    flex-shrink: 0;
+    z-index: 10;
+  }
+  .logo-mark {
+    width: 26px; height: 26px; border-radius: 7px;
+    background: linear-gradient(135deg, var(--green), #0ea85a);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 13px; font-weight: 800; color: #000;
+    box-shadow: 0 0 14px var(--green-dim);
+  }
+  .logo-text { font-size: 14px; font-weight: 700; }
+  .logo-sub { font-size: 10px; color: var(--text-dim); margin-left: 6px; }
+  .topnav-spacer { flex: 1; }
+  .api-pill {
+    display: flex; align-items: center; gap: 5px;
+    background: var(--bg-elevated); border: 1px solid var(--border);
+    border-radius: 20px; padding: 4px 10px;
+    font-size: 10px; color: var(--text-secondary); cursor: pointer;
+    transition: all 0.2s;
+  }
+  .api-pill:hover { border-color: var(--border-hover); }
+  .api-dot {
+    width: 5px; height: 5px; border-radius: 50%;
+    background: var(--red);
+  }
+  .api-dot.connected { background: var(--green); box-shadow: 0 0 6px var(--green-glow); }
+  .api-modal {
+    display: none; position: fixed; inset: 0; z-index: 100;
+    background: rgba(0,0,0,0.6); backdrop-filter: blur(4px);
+    align-items: center; justify-content: center;
+  }
+  .api-modal.visible { display: flex; }
+  .api-modal-box {
+    background: var(--bg-elevated); border: 1px solid var(--border);
+    border-radius: var(--radius); padding: 24px; width: 380px;
+  }
+  .api-modal-box h3 { font-size: 15px; font-weight: 700; margin-bottom: 12px; }
+  .api-modal-box input {
+    width: 100%; padding: 10px 12px; background: var(--bg);
+    border: 1px solid var(--border); border-radius: var(--radius-sm);
+    color: var(--text); font-family: 'JetBrains Mono', monospace; font-size: 12px;
+    margin-bottom: 8px;
+  }
+  .api-modal-box input:focus { outline: none; border-color: rgba(30,215,96,0.3); }
+  .api-modal-box .hint { font-size: 10px; color: var(--text-dim); margin-bottom: 12px; }
+  .api-modal-box .modal-btns { display: flex; gap: 8px; justify-content: flex-end; }
+  .api-modal-box button {
+    padding: 8px 16px; border-radius: var(--radius-sm); border: none;
+    font-family: 'Outfit', sans-serif; font-size: 12px; font-weight: 600; cursor: pointer;
+  }
+  .btn-save { background: var(--green); color: #000; }
+  .btn-cancel { background: var(--surface); color: var(--text-secondary); }
+
+  /* === INPUT STRIP === */
+  .input-strip {
+    flex-shrink: 0; background: var(--bg);
+    border-bottom: 1px solid var(--border); padding: 10px 16px;
+  }
+  .input-row { display: flex; gap: 10px; align-items: center; }
+  .mic-btn {
+    width: 48px; height: 48px; border-radius: 50%;
+    border: 2px solid var(--text-dim); background: transparent;
+    display: flex; align-items: center; justify-content: center;
+    cursor: pointer; flex-shrink: 0; transition: all 0.3s; font-size: 20px;
+  }
+  .mic-btn:hover { border-color: var(--red); background: rgba(232,64,64,0.08); }
+  .mic-btn.recording {
+    border-color: var(--red); background: rgba(232,64,64,0.15);
+    animation: pulse-ring 1.5s ease-in-out infinite;
+  }
+  @keyframes pulse-ring {
+    0%,100% { box-shadow: 0 0 0 0 rgba(232,64,64,0.3); }
+    50% { box-shadow: 0 0 0 10px rgba(232,64,64,0); }
+  }
+  .pitch-display {
+    flex: 1; background: var(--bg-elevated); border: 1px solid var(--border);
+    border-radius: var(--radius-sm); padding: 8px 12px;
+    display: flex; align-items: center; gap: 10px; min-width: 0; min-height: 48px;
+  }
+  .pitch-placeholder { font-size: 12px; color: var(--text-dim); }
+  .pitch-notes { display: flex; gap: 4px; flex-wrap: wrap; align-items: center; }
+  .note-tag {
+    background: var(--green-dim); border: 1px solid rgba(30,215,96,0.25);
+    border-radius: 4px; padding: 2px 8px; font-size: 12px; font-weight: 600;
+    color: var(--green); font-family: 'JetBrains Mono', monospace;
+  }
+  .bpm-tag {
+    font-size: 10px; color: var(--text-dim);
+    font-family: 'JetBrains Mono', monospace; margin-left: 4px;
+  }
+  .text-supplement textarea {
+    width: 180px; height: 48px; background: var(--bg-elevated);
+    border: 1px solid var(--border); border-radius: var(--radius-sm);
+    color: var(--text); font-family: 'Noto Serif SC', serif;
+    font-size: 12px; font-weight: 300; padding: 6px 10px;
+    resize: none; line-height: 1.5;
+  }
+  .text-supplement textarea:focus { outline: none; border-color: rgba(30,215,96,0.3); }
+  .text-supplement textarea::placeholder { color: var(--text-dim); }
+  .input-bottom { display: flex; align-items: center; gap: 6px; margin-top: 8px; }
+  .chip {
+    padding: 4px 12px; border: 1px solid var(--border); border-radius: 20px;
+    font-size: 11px; font-weight: 500; color: var(--text-secondary);
+    background: transparent; cursor: pointer; transition: all 0.2s;
+    font-family: 'Outfit', sans-serif;
+  }
+  .chip:hover { border-color: var(--border-hover); color: var(--text); }
+  .chip.active { border-color: var(--green); color: var(--green); background: var(--green-dim); }
+  .input-spacer { flex: 1; }
+  .gen-btn {
+    padding: 8px 22px; background: var(--green); border: none; border-radius: 24px;
+    font-family: 'Outfit', sans-serif; font-size: 13px; font-weight: 700;
+    color: #000; cursor: pointer; display: flex; align-items: center; gap: 6px;
+    box-shadow: 0 0 16px var(--green-dim); transition: all 0.2s;
+  }
+  .gen-btn:hover { transform: scale(1.03); box-shadow: 0 0 24px var(--green-glow); }
+  .gen-btn:disabled { opacity: 0.4; cursor: not-allowed; transform: none; }
+  .gen-btn .spinner {
+    display: none; width: 14px; height: 14px; border: 2px solid rgba(0,0,0,0.2);
+    border-top-color: #000; border-radius: 50%; animation: spin 0.6s linear infinite;
+  }
+  .gen-btn.loading .spinner { display: block; }
+  .gen-btn.loading .btn-label { display: none; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* === WORKSPACE === */
+  .workspace { flex: 1; display: flex; overflow: hidden; }
+  .workspace.hidden { display: none; }
+
+  .lyrics-panel {
+    width: 260px; flex-shrink: 0; display: flex; flex-direction: column;
+    border-right: 1px solid var(--border); background: var(--bg);
+  }
+  .lyrics-header {
+    padding: 10px 14px; display: flex; align-items: center; gap: 8px;
+    border-bottom: 1px solid var(--border);
+  }
+  .song-title { font-size: 14px; font-weight: 700; }
+  .song-section-tag {
+    font-size: 9px; font-weight: 600; letter-spacing: 0.06em;
+    padding: 2px 8px; border-radius: 4px;
+    background: var(--green-dim); color: var(--green); display: none;
+  }
+  .lyrics-body {
+    flex: 1; padding: 16px; overflow-y: auto;
+    display: flex; flex-direction: column; justify-content: center;
+  }
+  .lyrics-empty { text-align: center; color: var(--text-dim); font-size: 12px; line-height: 1.8; }
+  .lyric-line {
+    font-family: 'Noto Serif SC', serif; line-height: 2.2;
+    transition: all 0.4s ease; padding: 1px 0; position: relative;
+  }
+  .lyric-line.past { font-size: 12px; color: var(--text-dim); opacity: 0.4; }
+  .lyric-line.prev { font-size: 13px; color: var(--text-secondary); opacity: 0.6; }
+  .lyric-line.current {
+    font-size: 15px; font-weight: 400; color: var(--text); padding-left: 12px;
+  }
+  .lyric-line.current::before {
+    content: ''; position: absolute; left: 0; top: 50%; transform: translateY(-50%);
+    width: 3px; height: 55%; background: var(--green); border-radius: 2px;
+    box-shadow: 0 0 8px var(--green-glow);
+  }
+  .lyric-line.next { font-size: 13px; color: var(--text-secondary); opacity: 0.5; }
+  .lyric-line.far { font-size: 11px; color: var(--text-dim); opacity: 0.3; }
+  .lyrics-footer {
+    padding: 8px 14px; border-top: 1px solid var(--border); display: flex; gap: 6px;
+  }
+  .lyrics-action {
+    padding: 5px 10px; background: var(--bg-elevated); border: 1px solid var(--border);
+    border-radius: var(--radius-xs); font-size: 10px; font-weight: 500;
+    color: var(--text-secondary); cursor: pointer; font-family: 'Outfit', sans-serif;
+    transition: all 0.15s;
+  }
+  .lyrics-action:hover { border-color: var(--border-hover); color: var(--text); }
+
+  .right-panel {
+    flex: 1; display: flex; flex-direction: column;
+    background: var(--bg-deep); min-width: 0;
+  }
+  .transport {
+    padding: 8px 16px; border-bottom: 1px solid var(--border);
+    display: flex; align-items: center; gap: 8px; background: var(--bg);
+  }
+  .transport-btn {
+    width: 32px; height: 32px; border-radius: 50%; border: none;
+    display: flex; align-items: center; justify-content: center;
+    cursor: pointer; transition: all 0.2s; font-size: 12px;
+  }
+  .transport-btn.play {
+    background: var(--green); color: #000; box-shadow: 0 0 10px var(--green-dim);
+  }
+  .transport-btn.play:hover { transform: scale(1.08); box-shadow: 0 0 18px var(--green-glow); }
+  .transport-btn.stop {
+    background: var(--bg-elevated); border: 1px solid var(--border); color: var(--text-secondary);
+  }
+  .transport-btn.stop:hover { background: var(--bg-hover); }
+  .bpm-display {
+    font-family: 'JetBrains Mono', monospace; font-size: 18px; font-weight: 500;
+    color: var(--text); margin-left: 8px;
+  }
+  .bpm-unit { font-size: 9px; color: var(--text-dim); margin-left: 3px; }
+
+  .controls-strip {
+    display: flex; border-bottom: 1px solid var(--border); background: var(--bg); flex-wrap: wrap;
+  }
+  .ctrl-group {
+    padding: 10px 14px; border-right: 1px solid var(--border);
+    display: flex; flex-direction: column; gap: 6px;
+  }
+  .ctrl-group:last-child { border-right: none; }
+  .ctrl-label {
+    font-size: 9px; font-weight: 600; color: var(--text-dim);
+    letter-spacing: 0.08em; text-transform: uppercase;
+  }
+  .sound-row { display: flex; gap: 4px; flex-wrap: wrap; }
+  .sound-chip {
+    padding: 5px 10px; background: var(--bg-elevated); border: 1px solid var(--border);
+    border-radius: var(--radius-xs); font-size: 11px; cursor: pointer;
+    transition: all 0.15s; display: flex; align-items: center; gap: 4px;
+    color: var(--text-secondary); font-family: 'Outfit', sans-serif;
+  }
+  .sound-chip:hover { border-color: var(--border-hover); }
+  .sound-chip.active { border-color: var(--green); color: var(--green); background: var(--green-dim); }
+  .fx-row { display: flex; gap: 12px; align-items: center; }
+  .fx-item { display: flex; align-items: center; gap: 6px; }
+  .fx-name { font-size: 10px; color: var(--text-secondary); width: 28px; }
+  .fx-track {
+    width: 60px; height: 4px; background: var(--surface);
+    border-radius: 2px; cursor: pointer; position: relative;
+  }
+  .fx-fill { height: 100%; border-radius: 2px; background: var(--green); pointer-events: none; }
+  .fx-val {
+    font-size: 9px; color: var(--text-dim); width: 22px; text-align: right;
+    font-family: 'JetBrains Mono', monospace;
+  }
+  .voice-row { display: flex; align-items: center; gap: 4px; }
+  .voice-chip {
+    padding: 4px 10px; border-radius: 16px; font-size: 10px; font-weight: 500;
+    border: 1px solid var(--border); background: transparent;
+    color: var(--text-secondary); cursor: pointer; transition: all 0.15s;
+    font-family: 'Outfit', sans-serif;
+  }
+  .voice-chip.active { border-color: var(--purple); color: var(--purple); background: rgba(168,85,247,0.1); }
+  .voice-speak {
+    margin-left: 4px; padding: 4px 10px; border-radius: 16px;
+    border: 1px solid var(--border); background: var(--bg-elevated);
+    font-size: 10px; color: var(--text-secondary); cursor: pointer;
+    font-family: 'Outfit', sans-serif;
+  }
+  .voice-speak:hover { border-color: var(--purple); color: var(--purple); }
+
+  .code-area { flex: 1; display: flex; flex-direction: column; min-height: 0; position: relative; }
+  .code-header {
+    padding: 8px 16px; display: flex; align-items: center; justify-content: space-between;
+    background: var(--bg); border-bottom: 1px solid rgba(30,215,96,0.1);
+    transition: border-color 0.3s;
+  }
+  .code-title {
+    font-size: 11px; font-weight: 600; color: var(--green);
+    letter-spacing: 0.08em; display: flex; align-items: center; gap: 6px;
+  }
+  .code-badge {
+    font-size: 9px; padding: 2px 8px; border-radius: 10px;
+    background: var(--green-dim); color: var(--green); font-weight: 600; display: none;
+  }
+  .code-badge.visible { display: inline; }
+  .code-shortcut { font-size: 10px; color: var(--text-dim); font-family: 'JetBrains Mono', monospace; }
+  .code-editor-wrap {
+    flex: 1; display: flex; overflow: hidden; background: #07080c; position: relative;
+  }
+  .line-numbers {
+    width: 40px; flex-shrink: 0; padding: 14px 0; text-align: right;
+    font-family: 'JetBrains Mono', monospace; font-size: 11px; line-height: 1.95;
+    color: rgba(255,255,255,0.1); user-select: none; padding-right: 10px;
+    border-right: 1px solid rgba(30,215,96,0.06); overflow: hidden;
+  }
+  .code-editor-container { flex: 1; position: relative; overflow: hidden; }
+  .code-highlight, .code-textarea {
+    position: absolute; inset: 0; padding: 14px 16px;
+    font-family: 'JetBrains Mono', monospace; font-size: 12px;
+    line-height: 1.95; white-space: pre-wrap; word-wrap: break-word; overflow-y: auto;
+  }
+  .code-highlight { color: rgba(30,215,96,0.6); pointer-events: none; z-index: 1; }
+  .code-highlight .kw { color: var(--green); font-weight: 500; }
+  .code-highlight .str { color: var(--orange); }
+  .code-highlight .num { color: var(--purple); }
+  .code-highlight .cmt { color: rgba(255,255,255,0.18); font-style: italic; }
+  .code-textarea {
+    background: transparent; border: none; color: transparent;
+    caret-color: var(--green); resize: none; z-index: 2; outline: none;
+  }
+  .code-welcome {
+    display: flex; align-items: center; justify-content: center;
+    position: absolute; inset: 0; z-index: 5; background: #07080c;
+  }
+  .code-welcome.hidden { display: none; }
+  .welcome-msg { text-align: center; color: var(--text-dim); font-size: 13px; line-height: 1.8; }
+  .welcome-msg .big { font-size: 32px; margin-bottom: 8px; }
+
+  .loop-viz {
+    height: 32px; background: var(--bg); border-top: 1px solid var(--border);
+    display: flex; align-items: flex-end; padding: 0 16px 4px; gap: 2px;
+  }
+  .loop-step {
+    flex: 1; border-radius: 2px 2px 0 0; transition: all 0.1s; min-height: 3px;
+  }
+  .loop-step.off { background: rgba(255,255,255,0.04); }
+  .loop-step.beat { background: rgba(30,215,96,0.4); }
+  .loop-step.current { background: var(--green); box-shadow: 0 0 6px var(--green-glow); }
+
+  ::-webkit-scrollbar { width: 4px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.08); border-radius: 2px; }
+</style>
+</head>
+<body>
+
+  <!-- TOP NAV -->
+  <nav class="topnav">
+    <div class="logo-mark">V</div>
+    <span class="logo-text">Vibe Origin</span>
+    <span class="logo-sub">你脑子里有音乐</span>
+    <div class="topnav-spacer"></div>
+    <div class="api-pill" id="apiPill">
+      <div class="api-dot" id="apiDot"></div>
+      <span id="apiLabel">设置 API Key</span>
+    </div>
+  </nav>
+
+  <!-- API Key Modal -->
+  <div class="api-modal" id="apiModal">
+    <div class="api-modal-box">
+      <h3>Claude API Key</h3>
+      <input type="password" id="apiKeyInput" placeholder="sk-ant-..." autocomplete="off">
+      <div class="hint">Key 仅存储在浏览器本地，不会发送到任何第三方</div>
+      <div class="modal-btns">
+        <button class="btn-cancel" id="apiCancel">取消</button>
+        <button class="btn-save" id="apiSave">保存</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- INPUT STRIP -->
+  <div class="input-strip">
+    <div class="input-row">
+      <button class="mic-btn" id="micBtn">🎤</button>
+      <div class="pitch-display" id="pitchDisplay">
+        <span class="pitch-placeholder" id="pitchPlaceholder">按住麦克风，哼一段旋律</span>
+        <div class="pitch-notes" id="pitchNotes" style="display:none"></div>
+        <span class="bpm-tag" id="bpmTag" style="display:none"></span>
+      </div>
+      <div class="text-supplement">
+        <textarea id="textInput" placeholder="补充描述（可选）&#10;如：深夜，有点孤独"></textarea>
+      </div>
+    </div>
+    <div class="input-bottom">
+      <button class="chip active" data-style="电子氛围">电子氛围</button>
+      <button class="chip" data-style="治愈民谣">治愈民谣</button>
+      <button class="chip" data-style="华语流行">华语流行</button>
+      <button class="chip" data-style="说唱">说唱</button>
+      <button class="chip" data-style="后摇">后摇</button>
+      <button class="chip" data-style="爵士">爵士</button>
+      <div class="input-spacer"></div>
+      <button class="gen-btn" id="genBtn" disabled>
+        <span class="spinner"></span>
+        <span class="btn-label">✦ 生成</span>
+      </button>
+    </div>
+  </div>
+
+  <!-- WORKSPACE -->
+  <div class="workspace hidden" id="workspace">
+    <div class="lyrics-panel">
+      <div class="lyrics-header">
+        <span class="song-title" id="songTitle">—</span>
+        <span class="song-section-tag" id="sectionTag"></span>
+      </div>
+      <div class="lyrics-body" id="lyricsBody">
+        <div class="lyrics-empty">歌词会在生成后出现</div>
+      </div>
+      <div class="lyrics-footer">
+        <button class="lyrics-action" id="reAdaptBtn">↻ 重新适配</button>
+        <button class="lyrics-action" id="copyLyricsBtn">⎘ 复制歌词</button>
+      </div>
+    </div>
+
+    <div class="right-panel">
+      <div class="transport">
+        <button class="transport-btn play" id="playBtn">▶</button>
+        <button class="transport-btn stop" id="stopBtn">⏹</button>
+        <div class="bpm-display"><span id="bpmDisplay">120</span><span class="bpm-unit">BPM</span></div>
+        <div style="flex:1"></div>
+      </div>
+
+      <div class="controls-strip">
+        <div class="ctrl-group" style="flex:1">
+          <div class="ctrl-label">音色</div>
+          <div class="sound-row" id="soundRow">
+            <button class="sound-chip active" data-sound="piano">🎹 Piano</button>
+            <button class="sound-chip" data-sound="sawtooth">🎸 Synth</button>
+            <button class="sound-chip" data-sound="RolandTR808">🥁 808</button>
+            <button class="sound-chip" data-sound="triangle">✧ Pad</button>
+          </div>
+        </div>
+        <div class="ctrl-group">
+          <div class="ctrl-label">效果</div>
+          <div class="fx-row" id="fxRow">
+            <div class="fx-item">
+              <span class="fx-name">Rev</span>
+              <div class="fx-track" data-fx="room"><div class="fx-fill" style="width:50%"></div></div>
+              <span class="fx-val">.50</span>
+            </div>
+            <div class="fx-item">
+              <span class="fx-name">Dly</span>
+              <div class="fx-track" data-fx="delay"><div class="fx-fill" style="width:30%"></div></div>
+              <span class="fx-val">.30</span>
+            </div>
+            <div class="fx-item">
+              <span class="fx-name">Gain</span>
+              <div class="fx-track" data-fx="gain"><div class="fx-fill" style="width:70%"></div></div>
+              <span class="fx-val">.70</span>
+            </div>
+          </div>
+        </div>
+        <div class="ctrl-group">
+          <div class="ctrl-label">人声</div>
+          <div class="voice-row">
+            <button class="voice-chip active" data-tts="web">Web TTS</button>
+            <button class="voice-chip" data-tts="elevenlabs">ElevenLabs</button>
+            <button class="voice-speak" id="speakBtn">🔊 唱</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="code-area">
+        <div class="code-header">
+          <div class="code-title">
+            STRUDEL CODE
+            <span class="code-badge" id="liveBadge">LIVE</span>
+          </div>
+          <span class="code-shortcut">⌘Enter 执行</span>
+        </div>
+        <div class="code-editor-wrap">
+          <div class="line-numbers" id="lineNumbers">1</div>
+          <div class="code-editor-container">
+            <pre class="code-highlight" id="codeHighlight"></pre>
+            <textarea class="code-textarea" id="codeTextarea" spellcheck="false" placeholder="// Strudel 代码会在这里出现"></textarea>
+          </div>
+          <div class="code-welcome" id="codeWelcome">
+            <div class="welcome-msg">
+              <div class="big">🎵</div>
+              哼一段旋律，点击生成<br>代码会出现在这里
+            </div>
+          </div>
+        </div>
+        <div class="loop-viz" id="loopViz"></div>
+      </div>
+    </div>
+  </div>
+
+<script type="module">
+
+// ============================================================
+// EventBus
+// ============================================================
+class EventBus {
+  constructor() { this._l = {}; }
+  on(e, fn) { (this._l[e] ||= []).push(fn); return () => this.off(e, fn); }
+  off(e, fn) { if (this._l[e]) this._l[e] = this._l[e].filter(f => f !== fn); }
+  emit(e, d) { (this._l[e] || []).forEach(fn => fn(d)); }
+}
+const bus = new EventBus();
+
+// ============================================================
+// StrudelEngine
+// ============================================================
+let strudelRepl = null;
+let strudelLoaded = false;
+let isPlaying = false;
+let currentCode = '';
+let totalBeats = 48;
+
+async function loadStrudel() {
+  if (strudelLoaded) return;
+  const CDN = 'https://esm.sh';
+  try {
+    const { repl } = await import(`${CDN}/@strudel/core@1.1.0`);
+    await import(`${CDN}/@strudel/mini@1.1.0`);
+    await import(`${CDN}/@strudel/tonal@1.1.0`);
+    const { webaudioOutput, getAudioContext, initAudioOnFirstClick } = await import(`${CDN}/@strudel/webaudio@1.1.0`);
+    await import(`${CDN}/@strudel/soundfonts@1.1.0`);
+    await import(`${CDN}/@strudel/superdough@1.1.0`);
+    initAudioOnFirstClick();
+    strudelRepl = repl({ defaultOutput: webaudioOutput, getTime: () => getAudioContext().currentTime });
+    strudelLoaded = true;
+    console.log('[Strudel] Loaded');
+  } catch (e1) {
+    console.warn('[Strudel] Pinned version failed, trying latest...', e1);
+    try {
+      const { repl } = await import(`${CDN}/@strudel/core`);
+      await import(`${CDN}/@strudel/mini`);
+      await import(`${CDN}/@strudel/tonal`);
+      const { webaudioOutput, getAudioContext, initAudioOnFirstClick } = await import(`${CDN}/@strudel/webaudio`);
+      await import(`${CDN}/@strudel/soundfonts`);
+      await import(`${CDN}/@strudel/superdough`);
+      initAudioOnFirstClick();
+      strudelRepl = repl({ defaultOutput: webaudioOutput, getTime: () => getAudioContext().currentTime });
+      strudelLoaded = true;
+      console.log('[Strudel] Loaded (latest)');
+    } catch (e2) {
+      console.error('[Strudel] Failed:', e2);
+      throw e2;
+    }
+  }
+}
+
+async function strudelEval(code) {
+  if (!strudelLoaded) await loadStrudel();
+  currentCode = code;
+  try {
+    await strudelRepl.evaluate(code);
+    isPlaying = true;
+    document.getElementById('liveBadge').classList.add('visible');
+    bus.emit('strudel:playing');
+    startBeatTracking();
+  } catch (err) {
+    console.error('[Strudel] Eval error:', err);
+    bus.emit('strudel:error', err.message);
+  }
+}
+
+function strudelStop() {
+  if (strudelRepl) {
+    strudelRepl.stop();
+    isPlaying = false;
+    document.getElementById('liveBadge').classList.remove('visible');
+    bus.emit('strudel:stopped');
+  }
+}
+
+let beatRAF = null, lastBeat = -1;
+function startBeatTracking() {
+  if (beatRAF) cancelAnimationFrame(beatRAF);
+  function tick() {
+    if (!isPlaying || !strudelRepl?.scheduler) { beatRAF = null; return; }
+    const cycle = strudelRepl.scheduler.now?.() || 0;
+    const beat = cycle * 4;
+    const loopBeat = beat % totalBeats;
+    if (Math.floor(loopBeat) !== lastBeat) {
+      lastBeat = Math.floor(loopBeat);
+      bus.emit('strudel:tick', { beat: loopBeat, totalBeats });
+    }
+    beatRAF = requestAnimationFrame(tick);
+  }
+  tick();
+}
+
+// Loop viz init
+function initLoopViz() {
+  const viz = document.getElementById('loopViz');
+  viz.innerHTML = '';
+  for (let i = 0; i < 16; i++) {
+    const s = document.createElement('div');
+    s.className = 'loop-step off';
+    s.style.height = '3px';
+    viz.appendChild(s);
+  }
+}
+initLoopViz();
+
+bus.on('strudel:tick', ({ beat, totalBeats: tb }) => {
+  const steps = document.getElementById('loopViz').children;
+  const idx = Math.floor((beat / tb) * steps.length);
+  for (let i = 0; i < steps.length; i++) {
+    steps[i].className = 'loop-step ' + (i === idx ? 'current' : i < idx ? 'beat' : 'off');
+    steps[i].style.height = (i === idx ? '20px' : i < idx ? '10px' : '3px');
+  }
+});
+bus.on('strudel:stopped', () => {
+  [...document.getElementById('loopViz').children].forEach(s => { s.className = 'loop-step off'; s.style.height = '3px'; });
+});
+
+// ============================================================
+// PitchDetect
+// ============================================================
+let micStream = null, micAnalyser = null, micCtx = null, isRecording = false;
+let detectedNotes = [], noteTimestamps = [];
+
+function detectPitchYIN(buf, sr) {
+  const n = Math.floor(buf.length / 2);
+  const diff = new Float32Array(n);
+  for (let tau = 0; tau < n; tau++) {
+    let sum = 0;
+    for (let i = 0; i < n; i++) { const d = buf[i] - buf[i + tau]; sum += d * d; }
+    diff[tau] = sum;
+  }
+  const cmndf = new Float32Array(n);
+  cmndf[0] = 1;
+  let rs = 0;
+  for (let tau = 1; tau < n; tau++) { rs += diff[tau]; cmndf[tau] = diff[tau] * tau / rs; }
+  let tau = 2;
+  while (tau < n && cmndf[tau] > 0.15) tau++;
+  if (tau === n) return -1;
+  while (tau + 1 < n && cmndf[tau + 1] < cmndf[tau]) tau++;
+  const f = sr / tau;
+  return (f > 60 && f < 1200) ? f : -1;
+}
+
+function freqToNote(f) {
+  const names = ['C','C#','D','Eb','E','F','F#','G','Ab','A','Bb','B'];
+  const midi = Math.round(12 * Math.log2(f / 440) + 69);
+  return names[midi % 12] + (Math.floor(midi / 12) - 1);
+}
+function freqToStrudel(f) {
+  const names = ['c','cs','d','eb','e','f','fs','g','ab','a','bb','b'];
+  const midi = Math.round(12 * Math.log2(f / 440) + 69);
+  return names[midi % 12] + (Math.floor(midi / 12) - 1);
+}
+function estimateBPM(ts) {
+  if (ts.length < 3) return 95;
+  const intervals = [];
+  for (let i = 1; i < ts.length; i++) intervals.push(ts[i] - ts[i - 1]);
+  const avg = intervals.reduce((a, b) => a + b, 0) / intervals.length;
+  return Math.max(60, Math.min(180, Math.round(60000 / avg)));
+}
+
+async function startMic() {
+  if (isRecording) { stopMic(); return; }
+  try {
+    micCtx = new AudioContext();
+    micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    const src = micCtx.createMediaStreamSource(micStream);
+    micAnalyser = micCtx.createAnalyser();
+    micAnalyser.fftSize = 4096;
+    src.connect(micAnalyser);
+    isRecording = true;
+    detectedNotes = []; noteTimestamps = [];
+    document.getElementById('micBtn').classList.add('recording');
+    document.getElementById('pitchPlaceholder').style.display = 'none';
+    document.getElementById('pitchNotes').style.display = 'flex';
+    document.getElementById('pitchNotes').innerHTML = '';
+    document.getElementById('bpmTag').style.display = 'inline';
+
+    const buffer = new Float32Array(micAnalyser.fftSize);
+    let lastNote = '', fc = 0;
+    function analyze() {
+      if (!isRecording) return;
+      micAnalyser.getFloatTimeDomainData(buffer);
+      if (++fc % 3 === 0) {
+        const freq = detectPitchYIN(buffer, micCtx.sampleRate);
+        if (freq > 0) {
+          const note = freqToNote(freq);
+          if (note !== lastNote) {
+            lastNote = note;
+            detectedNotes.push({ note, freq, sn: freqToStrudel(freq) });
+            noteTimestamps.push(Date.now());
+            updatePitchUI();
+          }
+        }
+      }
+      requestAnimationFrame(analyze);
+    }
+    analyze();
+  } catch (err) {
+    console.error('[Mic]', err);
+    alert('无法访问麦克风，请检查浏览器权限');
+  }
+}
+
+function stopMic() {
+  isRecording = false;
+  document.getElementById('micBtn').classList.remove('recording');
+  if (micStream) { micStream.getTracks().forEach(t => t.stop()); micStream = null; }
+  if (micCtx) { micCtx.close(); micCtx = null; }
+  if (detectedNotes.length > 0) {
+    const bpm = estimateBPM(noteTimestamps);
+    document.getElementById('bpmTag').textContent = `≈ ${bpm} BPM`;
+    bus.emit('hum:detected', {
+      notes: detectedNotes.map(n => n.note),
+      strudelNotes: detectedNotes.map(n => n.sn),
+      bpm,
+    });
+    document.getElementById('genBtn').disabled = false;
+  }
+}
+
+function updatePitchUI() {
+  const el = document.getElementById('pitchNotes');
+  const recent = detectedNotes.slice(-8);
+  el.innerHTML = recent.map((n, i) =>
+    `<span class="note-tag" style="${i < recent.length - 1 ? 'opacity:0.5' : ''}">${n.note}</span>`
+  ).join('');
+  document.getElementById('bpmTag').textContent = `≈ ${estimateBPM(noteTimestamps)} BPM`;
+}
+
+// ============================================================
+// AIBridge
+// ============================================================
+const apiKey = { value: localStorage.getItem('vibe-origin-api-key') || '' };
+let selectedStyle = '电子氛围';
+
+function buildGenPrompt(notes, bpm, style, text) {
+  const cycles = Math.round(30 / (60 / bpm * 4));
+  const tb = cycles * 4;
+  return {
+    system: `你是一个浏览器音乐创作引擎。用户哼了一段旋律（音符序列），你需要同时生成 Strudel 代码和配套歌词。
+
+Strudel 代码要求：
+- 使用 mini-notation 语法
+- 基于用户音符构建旋律轨
+- 添加鼓组（.bank("RolandTR808")）和低音轨
+- 用 .slow(${cycles}) 使总时长约30秒
+- 用 .cpm(${Math.round(bpm / 4)}) 设置速度
+- 风格：${style}
+- 多轨用 $: 前缀分开，每轨独立一行
+
+歌词要求：
+- 6~8行，铺满30秒 demo
+- 每行带 beat 入点（1~${tb}）
+- 中文，意象具体有画面感
+
+严格返回JSON：
+{"strudel_code":"...","lyrics":[{"beat":1,"text":"..."}],"bpm":${bpm},"title":"歌名","total_beats":${tb}}`,
+    user: `音符：${notes.join(' ')}\nBPM：${bpm}\n风格：${style}${text ? '\n描述：' + text : ''}`,
+  };
+}
+
+function buildReAdaptPrompt(code, bpm, style, tb) {
+  return {
+    system: `你是歌词适配引擎。根据 Strudel loop 代码重新生成配套歌词。
+分析音符走向、节奏密度、情绪，生成匹配歌词。
+6~8行，每行带beat入点（1~${tb}），中文，意象具体。风格：${style}
+返回JSON：{"lyrics":[{"beat":1,"text":"..."}],"title":"歌名"}`,
+    user: `Strudel代码：\n${code}\nBPM: ${bpm}`,
+  };
+}
+
+async function callClaude(sys, user) {
+  if (!apiKey.value) throw new Error('请先设置 Claude API Key');
+  const res = await fetch('https://api.anthropic.com/v1/messages', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'x-api-key': apiKey.value,
+      'anthropic-version': '2023-06-01',
+      'anthropic-dangerous-direct-browser-access': 'true',
+    },
+    body: JSON.stringify({
+      model: 'claude-sonnet-4-20250514',
+      max_tokens: 1500,
+      system: sys,
+      messages: [{ role: 'user', content: user }],
+    }),
+  });
+  if (!res.ok) {
+    const e = await res.json().catch(() => ({}));
+    throw new Error(e.error?.message || `API ${res.status}`);
+  }
+  const data = await res.json();
+  const raw = data.content?.[0]?.text || '';
+  return JSON.parse(raw.replace(/```json|```/g, '').trim());
+}
+
+// ============================================================
+// LyricsSync
+// ============================================================
+let currentLyricIdx = -1;
+let _lyrics = [];
+
+bus.on('strudel:tick', ({ beat }) => {
+  if (!_lyrics.length) return;
+  let idx = -1;
+  for (let i = _lyrics.length - 1; i >= 0; i--) {
+    if (beat >= _lyrics[i].beat) { idx = i; break; }
+  }
+  if (idx === currentLyricIdx) return;
+  currentLyricIdx = idx;
+
+  const lines = document.querySelectorAll('#lyricsBody .lyric-line');
+  lines.forEach((l, i) => {
+    l.className = 'lyric-line';
+    if (i < idx - 1) l.classList.add('past');
+    else if (i === idx - 1) l.classList.add('prev');
+    else if (i === idx) l.classList.add('current');
+    else if (i === idx + 1) l.classList.add('next');
+    else l.classList.add('far');
+  });
+  if (lines[idx]) lines[idx].scrollIntoView({ behavior: 'smooth', block: 'center' });
+
+  const tag = document.getElementById('sectionTag');
+  if (idx >= 0) { tag.style.display = 'inline'; tag.textContent = `${idx + 1}/${_lyrics.length}`; }
+
+  if (idx >= 0) bus.emit('tts:speak', { text: _lyrics[idx].text, index: idx });
+});
+
+bus.on('strudel:stopped', () => {
+  currentLyricIdx = -1;
+  document.querySelectorAll('#lyricsBody .lyric-line').forEach(l => l.className = 'lyric-line far');
+});
+
+// ============================================================
+// TTSEngine
+// ============================================================
+let ttsEngine = 'web';
+let lastSpokenIdx = -1;
+
+bus.on('tts:engine-changed', e => { ttsEngine = e; });
+
+bus.on('tts:speak', ({ text, index }) => {
+  if (index === lastSpokenIdx) return;
+  lastSpokenIdx = index;
+  if (ttsEngine === 'web') speakWeb(text);
+  else speakEL(text);
+});
+
+function speakWeb(text) {
+  speechSynthesis.cancel();
+  const u = new SpeechSynthesisUtterance(text);
+  u.lang = 'zh-CN'; u.rate = 0.9; u.pitch = 1.1; u.volume = 0.7;
+  const zh = speechSynthesis.getVoices().find(v => v.lang.startsWith('zh'));
+  if (zh) u.voice = zh;
+  speechSynthesis.speak(u);
+}
+
+async function speakEL(text) {
+  const key = localStorage.getItem('vibe-origin-elevenlabs-key');
+  if (!key) { speakWeb(text); return; }
+  try {
+    const r = await fetch('https://api.elevenlabs.io/v1/text-to-speech/21m00Tcm4TlvDq8ikWAM', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'xi-api-key': key },
+      body: JSON.stringify({ text, model_id: 'eleven_multilingual_v2', voice_settings: { stability: 0.5, similarity_boost: 0.75 } }),
+    });
+    if (!r.ok) throw new Error('ElevenLabs error');
+    const blob = await r.blob();
+    const url = URL.createObjectURL(blob);
+    const a = new Audio(url);
+    a.volume = 0.7; a.play();
+    a.onended = () => URL.revokeObjectURL(url);
+  } catch { speakWeb(text); }
+}
+
+speechSynthesis.getVoices();
+speechSynthesis.addEventListener?.('voiceschanged', () => speechSynthesis.getVoices());
+bus.on('strudel:stopped', () => { lastSpokenIdx = -1; speechSynthesis.cancel(); });
+
+// ============================================================
+// UIController — controls ↔ code sync
+// ============================================================
+function updateCodeHighlight() {
+  const code = document.getElementById('codeTextarea').value;
+  const h = code
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/(\/\/.*)/g, '<span class="cmt">$1</span>')
+    .replace(/\b(note|s|stack|slow|fast|room|delay|gain|bank|lpf|hpf|cpm|rev|n|speed|vowel|crush|shape)\b/g, '<span class="kw">$1</span>')
+    .replace(/"([^"]*)"/g, '"<span class="str">$1</span>"')
+    .replace(/\b(\d+\.?\d*)\b/g, '<span class="num">$1</span>');
+  document.getElementById('codeHighlight').innerHTML = h + '\n';
+}
+
+function updateLineNumbers() {
+  const n = document.getElementById('codeTextarea').value.split('\n').length;
+  document.getElementById('lineNumbers').innerHTML = Array.from({ length: n }, (_, i) => i + 1).join('<br>');
+}
+
+function syncControlsFromCode(code) {
+  const sm = code.match(/\.s\("([^"]+)"\)/);
+  if (sm) document.querySelectorAll('.sound-chip').forEach(c => c.classList.toggle('active', c.dataset.sound === sm[1]));
+  ['room', 'delay', 'gain'].forEach(fx => {
+    const m = code.match(new RegExp(`\\.${fx}\\(([\\d.]+)\\)`));
+    if (m) {
+      const v = parseFloat(m[1]);
+      const t = document.querySelector(`.fx-track[data-fx="${fx}"]`);
+      if (t) {
+        t.querySelector('.fx-fill').style.width = (v * 100) + '%';
+        t.parentElement.querySelector('.fx-val').textContent = '.' + String(Math.round(v * 100)).padStart(2, '0');
+      }
+    }
+  });
+  const cm = code.match(/\.cpm\((\d+)\)/);
+  if (cm) document.getElementById('bpmDisplay').textContent = parseInt(cm[1]) * 4;
+}
+
+function displayLyrics(lyrics) {
+  _lyrics = lyrics || [];
+  const body = document.getElementById('lyricsBody');
+  if (!_lyrics.length) { body.innerHTML = '<div class="lyrics-empty">暂无歌词</div>'; return; }
+  body.innerHTML = _lyrics.map((l, i) =>
+    `<div class="lyric-line far" data-beat="${l.beat}" data-index="${i}">${l.text}</div>`
+  ).join('');
+}
+
+// Sound chips
+document.getElementById('soundRow').addEventListener('click', e => {
+  const chip = e.target.closest('.sound-chip');
+  if (!chip || !isPlaying) return;
+  document.querySelectorAll('.sound-chip').forEach(c => c.classList.remove('active'));
+  chip.classList.add('active');
+  let code = document.getElementById('codeTextarea').value;
+  code = code.replace(/\.s\("([^"]+)"\)/, `.s("${chip.dataset.sound}")`);
+  document.getElementById('codeTextarea').value = code;
+  updateCodeHighlight();
+  strudelEval(code);
+  bus.emit('code:changed', { type: 'sound', code });
+});
+
+// Effect sliders
+document.querySelectorAll('.fx-track').forEach(track => {
+  function setFx(e) {
+    const rect = track.getBoundingClientRect();
+    const ratio = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+    const val = Math.round(ratio * 100) / 100;
+    track.querySelector('.fx-fill').style.width = (ratio * 100) + '%';
+    track.parentElement.querySelector('.fx-val').textContent = '.' + String(Math.round(val * 100)).padStart(2, '0');
+    const fx = track.dataset.fx;
+    let code = document.getElementById('codeTextarea').value;
+    const regex = new RegExp(`\\.${fx}\\([\\d.]+\\)`);
+    if (regex.test(code)) code = code.replace(regex, `.${fx}(${val})`);
+    document.getElementById('codeTextarea').value = code;
+    updateCodeHighlight();
+    if (isPlaying) strudelEval(code);
+    bus.emit('code:changed', { type: 'fx', code });
+  }
+  track.addEventListener('mousedown', e => {
+    setFx(e);
+    const mv = ev => setFx(ev);
+    const up = () => { document.removeEventListener('mousemove', mv); document.removeEventListener('mouseup', up); };
+    document.addEventListener('mousemove', mv);
+    document.addEventListener('mouseup', up);
+  });
+});
+
+// Code editor Cmd+Enter
+document.getElementById('codeTextarea').addEventListener('keydown', async e => {
+  if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
+    e.preventDefault();
+    const code = document.getElementById('codeTextarea').value;
+    await strudelEval(code);
+    syncControlsFromCode(code);
+    bus.emit('code:changed', { type: 'manual', code });
+  }
+});
+
+// Scroll sync
+const ta = document.getElementById('codeTextarea');
+const hl = document.getElementById('codeHighlight');
+ta.addEventListener('scroll', () => { hl.scrollTop = ta.scrollTop; hl.scrollLeft = ta.scrollLeft; });
+ta.addEventListener('input', () => { updateCodeHighlight(); updateLineNumbers(); });
+
+// ============================================================
+// Re-adaptation
+// ============================================================
+let reAdaptTimer = null, lastCodeForLyrics = '';
+
+function isNoteChange(a, b) {
+  const extract = c => JSON.stringify([...(c.matchAll(/note\("([^"]+)"\)/g) || [])].map(m => m[1]));
+  return extract(a) !== extract(b);
+}
+
+bus.on('code:changed', ({ type, code }) => {
+  if (type === 'manual' && isNoteChange(lastCodeForLyrics, code)) {
+    clearTimeout(reAdaptTimer);
+    reAdaptTimer = setTimeout(() => triggerReAdapt(code), 2000);
+  }
+});
+
+async function triggerReAdapt(code) {
+  if (!apiKey.value) return;
+  const bpm = parseInt(document.getElementById('bpmDisplay').textContent) || 120;
+  try {
+    const p = buildReAdaptPrompt(code || currentCode, bpm, selectedStyle, totalBeats);
+    const result = await callClaude(p.system, p.user);
+    if (result.lyrics) { displayLyrics(result.lyrics); currentLyricIdx = -1; lastSpokenIdx = -1; }
+    if (result.title) document.getElementById('songTitle').textContent = result.title;
+    lastCodeForLyrics = code || currentCode;
+    bus.emit('ai:re-adapted', result);
+  } catch (err) { console.error('[ReAdapt]', err); }
+}
+
+document.getElementById('reAdaptBtn').addEventListener('click', () => triggerReAdapt(document.getElementById('codeTextarea').value));
+document.getElementById('copyLyricsBtn').addEventListener('click', () => {
+  if (!_lyrics.length) return;
+  navigator.clipboard.writeText(_lyrics.map(l => l.text).join('\n')).then(() => {
+    const b = document.getElementById('copyLyricsBtn');
+    b.textContent = '✓ 已复制'; setTimeout(() => b.textContent = '⎘ 复制歌词', 1500);
+  });
+});
+
+// ============================================================
+// UI Wiring
+// ============================================================
+
+// Style chips
+document.querySelectorAll('.chip[data-style]').forEach(chip => {
+  chip.addEventListener('click', () => {
+    document.querySelectorAll('.chip[data-style]').forEach(c => c.classList.remove('active'));
+    chip.classList.add('active');
+    selectedStyle = chip.dataset.style;
+  });
+});
+
+// API key modal
+function updateApiStatus() {
+  const dot = document.getElementById('apiDot');
+  const label = document.getElementById('apiLabel');
+  if (apiKey.value) { dot.classList.add('connected'); label.textContent = 'API 已连接'; }
+  else { dot.classList.remove('connected'); label.textContent = '设置 API Key'; }
+}
+updateApiStatus();
+document.getElementById('apiPill').addEventListener('click', () => {
+  document.getElementById('apiKeyInput').value = apiKey.value;
+  document.getElementById('apiModal').classList.add('visible');
+});
+document.getElementById('apiCancel').addEventListener('click', () => document.getElementById('apiModal').classList.remove('visible'));
+document.getElementById('apiSave').addEventListener('click', () => {
+  apiKey.value = document.getElementById('apiKeyInput').value.trim();
+  localStorage.setItem('vibe-origin-api-key', apiKey.value);
+  updateApiStatus();
+  document.getElementById('apiModal').classList.remove('visible');
+});
+
+// Voice chips
+document.querySelectorAll('.voice-chip[data-tts]').forEach(chip => {
+  chip.addEventListener('click', () => {
+    document.querySelectorAll('.voice-chip[data-tts]').forEach(c => c.classList.remove('active'));
+    chip.classList.add('active');
+    bus.emit('tts:engine-changed', chip.dataset.tts);
+  });
+});
+
+// Mic
+document.getElementById('micBtn').addEventListener('click', () => { isRecording ? stopMic() : startMic(); });
+
+// Play/Stop
+document.getElementById('playBtn').addEventListener('click', async () => {
+  if (!currentCode) {
+    await strudelEval(`note("c3 eb3 g3 f3").s("piano").slow(2)`);
+  } else {
+    await strudelEval(currentCode);
+  }
+});
+document.getElementById('stopBtn').addEventListener('click', () => strudelStop());
+
+// Speak button
+document.getElementById('speakBtn').addEventListener('click', () => {
+  if (!_lyrics.length) return;
+  lastSpokenIdx = -1;
+  let i = 0;
+  function next() {
+    if (i >= _lyrics.length) return;
+    speakWeb(_lyrics[i].text);
+    const u = new SpeechSynthesisUtterance('');
+    u.onend = () => { i++; setTimeout(next, 300); };
+    // Use the actual utterance end event from speakWeb
+    i++; setTimeout(next, 2000);
+  }
+  next();
+});
+
+// Generate — the core flow
+let lastHumData = null;
+bus.on('hum:detected', d => { lastHumData = d; });
+
+document.getElementById('genBtn').addEventListener('click', async () => {
+  if (!lastHumData) return;
+  if (!apiKey.value) { document.getElementById('apiModal').classList.add('visible'); return; }
+
+  const btn = document.getElementById('genBtn');
+  btn.disabled = true; btn.classList.add('loading');
+
+  try {
+    const [_, result] = await Promise.all([
+      loadStrudel(),
+      (async () => {
+        const p = buildGenPrompt(lastHumData.notes, lastHumData.bpm, selectedStyle, document.getElementById('textInput').value.trim());
+        return await callClaude(p.system, p.user);
+      })(),
+    ]);
+
+    document.getElementById('workspace').classList.remove('hidden');
+    document.getElementById('codeWelcome').classList.add('hidden');
+    document.getElementById('bpmDisplay').textContent = result.bpm || 120;
+    totalBeats = result.total_beats || 48;
+
+    const code = result.strudel_code;
+    document.getElementById('codeTextarea').value = code;
+    updateCodeHighlight(); updateLineNumbers();
+    document.getElementById('songTitle').textContent = result.title || '—';
+    displayLyrics(result.lyrics);
+    lastCodeForLyrics = code;
+
+    await strudelEval(code);
+    bus.emit('ai:generated', result);
+    saveSession();
+  } catch (err) {
+    console.error('[Generate]', err);
+    alert('生成失败: ' + err.message);
+  }
+  btn.disabled = false; btn.classList.remove('loading');
+});
+
+// ============================================================
+// Persistence
+// ============================================================
+function saveSession() {
+  localStorage.setItem('vibe-origin-session', JSON.stringify({
+    code: document.getElementById('codeTextarea').value,
+    lyrics: _lyrics, title: document.getElementById('songTitle').textContent,
+    bpm: document.getElementById('bpmDisplay').textContent,
+  }));
+}
+function restoreSession() {
+  const s = localStorage.getItem('vibe-origin-session');
+  if (!s) return;
+  try {
+    const d = JSON.parse(s);
+    if (d.code) {
+      document.getElementById('codeTextarea').value = d.code;
+      updateCodeHighlight(); updateLineNumbers();
+      currentCode = d.code;
+    }
+    if (d.lyrics?.length) { _lyrics = d.lyrics; displayLyrics(d.lyrics); }
+    if (d.title) document.getElementById('songTitle').textContent = d.title;
+    if (d.bpm) document.getElementById('bpmDisplay').textContent = d.bpm;
+    if (d.code) {
+      document.getElementById('workspace').classList.remove('hidden');
+      document.getElementById('codeWelcome').classList.add('hidden');
+      document.getElementById('genBtn').disabled = false;
+      syncControlsFromCode(d.code);
+    }
+  } catch (e) { console.warn('[Restore]', e); }
+}
+
+bus.on('ai:generated', () => setTimeout(saveSession, 500));
+bus.on('ai:re-adapted', () => setTimeout(saveSession, 500));
+bus.on('code:changed', () => setTimeout(saveSession, 1000));
+bus.on('strudel:error', msg => {
+  const h = document.querySelector('.code-header');
+  h.style.borderBottomColor = 'rgba(232,64,64,0.4)';
+  setTimeout(() => h.style.borderBottomColor = '', 2000);
+});
+
+restoreSession();
+console.log('[Vibe Origin] Ready.');
+
+</script>
+</body>
+</html>
