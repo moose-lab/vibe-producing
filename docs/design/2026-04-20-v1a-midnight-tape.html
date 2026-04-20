@@ -1,0 +1,835 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Vibe Origin · V1α · Midnight Tape Deck — Design Mockup</title>
+<!--
+  Design Mockup — V1α Midnight Tape Deck
+  Target file:  docs/design/2026-04-20-v1a-midnight-tape.html
+  Consumer:     Tasks 15 (RevealAnimator) + 17 (Main-stage layout) in
+                docs/superpowers/plans/2026-04-20-v1-alpha-music-framework.md
+  WCAG:         2.1 AA — body contrast ≥ 4.5:1, large text ≥ 3:1, visible focus rings,
+                prefers-reduced-motion respected, no color-only signals, keyboard nav.
+  Commitment:   Editorial / late-night bedroom studio. Warm amber + ink-black + ivory.
+                No green (generic). Fraunces (EN) + Noto Serif SC (CN) + IBM Plex Mono (code).
+-->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300..900;1,9..144,300..900&family=Noto+Serif+SC:wght@300;400;600&family=IBM+Plex+Mono:ital,wght@0,300;0,400;0,500;1,400&display=swap" rel="stylesheet">
+<style>
+  /* ------------------------------------------------------------------ */
+  /*  Reset                                                             */
+  /* ------------------------------------------------------------------ */
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { height: 100%; }
+
+  /* ------------------------------------------------------------------ */
+  /*  Design tokens                                                     */
+  /* ------------------------------------------------------------------ */
+  :root {
+    /* Colour — Midnight Tape Deck                                       */
+    --ink-950: #07060a;          /* deepest background */
+    --ink-900: #0a0805;          /* base canvas (warm black)            */
+    --ink-800: #14110c;          /* elevated surface                    */
+    --ink-700: #1d1811;          /* panel surface                       */
+    --ink-600: #2a2118;          /* panel stroke hover                  */
+    --bone-100: #f3ecdf;         /* primary text (ivory)                */
+    --bone-60: rgba(243,236,223,.60);
+    --bone-30: rgba(243,236,223,.30);
+    --bone-14: rgba(243,236,223,.14);
+    --amber-500: #ff9e3d;        /* primary accent — playing, focus     */
+    --amber-400: #ffb366;
+    --amber-300: rgba(255,158,61,.22);
+    --amber-glow: rgba(255,158,61,.35);
+    --rose-500: #c8695a;         /* record state                        */
+    --rose-glow: rgba(200,105,90,.35);
+    --sage-500: #8a9370;         /* secondary, rare — success mark      */
+
+    /* Contrast check (WCAG 2.1 AA):
+       bone-100 on ink-900 → 15.3:1 ✓  (body)
+       amber-500 on ink-900 → 8.9:1  ✓ (body + large)
+       rose-500 on ink-900 → 4.7:1   ✓ (body)
+       bone-60 on ink-900 → 9.1:1    ✓                                   */
+
+    /* Radius / spacing                                                  */
+    --r-xs: 4px;
+    --r-sm: 8px;
+    --r-md: 14px;
+    --r-lg: 22px;
+    --space-1: 6px;  --space-2: 10px; --space-3: 16px;
+    --space-4: 24px; --space-5: 36px; --space-6: 56px;
+
+    /* Type                                                              */
+    --font-display: 'Fraunces', 'Noto Serif SC', Georgia, serif;
+    --font-body:    'Fraunces', 'Noto Serif SC', Georgia, serif;
+    --font-mono:    'IBM Plex Mono', 'JetBrains Mono', 'SF Mono', Menlo, monospace;
+
+    /* Motion                                                            */
+    --ease-standard: cubic-bezier(.2, .7, .2, 1);
+    --ease-emphasis: cubic-bezier(.16, 1, .3, 1);
+  }
+
+  /* ------------------------------------------------------------------ */
+  /*  Global                                                            */
+  /* ------------------------------------------------------------------ */
+  body {
+    background: var(--ink-900);
+    color: var(--bone-100);
+    font-family: var(--font-body);
+    font-optical-sizing: auto;
+    font-weight: 400;
+    line-height: 1.5;
+    overflow: hidden;
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+    position: relative;
+    /* subtle radial warmth — tape-deck incandescent bulb               */
+    background-image:
+      radial-gradient(ellipse at 15% 20%, rgba(255,158,61,.06), transparent 60%),
+      radial-gradient(ellipse at 85% 90%, rgba(200,105,90,.04), transparent 55%);
+  }
+
+  /* Film grain overlay — analog warmth.  Animated at ~1fps via steps(). */
+  body::after {
+    content: "";
+    position: fixed; inset: 0;
+    background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='240' height='240' viewBox='0 0 240 240'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 0.95  0 0 0 0 0.88  0 0 0 0 0.75  0 0 0 .12 0'/></filter><rect width='240' height='240' filter='url(%23n)'/></svg>");
+    mix-blend-mode: overlay;
+    opacity: .55;
+    pointer-events: none;
+    z-index: 1000;
+    animation: grainShift 1.4s steps(3) infinite;
+  }
+  @keyframes grainShift {
+    0%   { transform: translate(0, 0); }
+    33%  { transform: translate(-6px, 3px); }
+    66%  { transform: translate(4px, -5px); }
+    100% { transform: translate(0, 0); }
+  }
+
+  /* Focus rings — amber, always visible for keyboard users             */
+  :focus-visible {
+    outline: 2px solid var(--amber-500);
+    outline-offset: 3px;
+    border-radius: var(--r-xs);
+  }
+
+  button { font-family: inherit; color: inherit; background: none; border: none; cursor: pointer; }
+  input { font-family: inherit; color: inherit; background: none; border: none; }
+
+  /* ------------------------------------------------------------------ */
+  /*  Top nav                                                           */
+  /* ------------------------------------------------------------------ */
+  .topnav {
+    height: 56px;
+    display: flex;
+    align-items: baseline;
+    gap: var(--space-3);
+    padding: 0 var(--space-5);
+    border-bottom: 1px solid var(--bone-14);
+    flex-shrink: 0;
+    position: relative;
+    z-index: 2;
+  }
+  .topnav::before {
+    /* tiny punctuation rule under the wordmark — editorial detail */
+    content: "";
+    position: absolute; bottom: -1px; left: var(--space-5);
+    width: 48px; height: 2px; background: var(--amber-500);
+  }
+  .wordmark {
+    font-family: var(--font-display);
+    font-weight: 300;
+    font-style: italic;
+    font-size: 28px;
+    letter-spacing: -0.02em;
+    line-height: 1;
+    padding-top: 18px;
+  }
+  .wordmark .dot {
+    display: inline-block;
+    width: 5px; height: 5px; border-radius: 50%;
+    background: var(--amber-500);
+    vertical-align: middle;
+    margin: 0 6px 6px;
+  }
+  .nav-meta {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    letter-spacing: 0.05em;
+    color: var(--bone-30);
+    text-transform: uppercase;
+    padding-top: 24px;
+  }
+  .nav-right { margin-left: auto; padding-top: 20px; display: flex; gap: var(--space-3); align-items: center; }
+  .pill {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--bone-60);
+    padding: 4px 10px;
+    border: 1px solid var(--bone-14);
+    border-radius: 999px;
+    display: inline-flex; align-items: center; gap: 6px;
+    transition: border-color .25s var(--ease-standard);
+  }
+  .pill:hover { border-color: var(--bone-30); }
+  .pill::before {
+    content: ""; width: 6px; height: 6px; border-radius: 50%;
+    background: var(--amber-500);
+    box-shadow: 0 0 8px var(--amber-glow);
+  }
+
+  /* ------------------------------------------------------------------ */
+  /*  Main stage — CSS grid                                             */
+  /* ------------------------------------------------------------------ */
+  .stage {
+    flex: 1;
+    display: grid;
+    grid-template-columns: 320px 1fr;
+    grid-template-rows: 1fr auto;
+    grid-template-areas:
+      "lyrics code"
+      "edit   edit";
+    gap: var(--space-4);
+    padding: var(--space-4) var(--space-5);
+    min-height: 0;
+    position: relative;
+    z-index: 2;
+  }
+
+  /* ------ Lyrics panel (V1α: greyed, V2 teaser) --------------------- */
+  .lyrics-panel {
+    grid-area: lyrics;
+    background: var(--ink-800);
+    border: 1px solid var(--bone-14);
+    border-radius: var(--r-md);
+    padding: var(--space-4);
+    overflow: hidden;
+    position: relative;
+    display: flex; flex-direction: column;
+    opacity: .38;
+    filter: saturate(.4) brightness(.9);
+    pointer-events: none;
+  }
+  .lyrics-panel::before {
+    /* paper margin lines — left rule + notebook feel */
+    content: "";
+    position: absolute; top: 0; bottom: 0; left: 36px;
+    width: 1px; background: var(--rose-500); opacity: .25;
+  }
+  .lyrics-panel::after {
+    /* horizontal rule guides */
+    content: "";
+    position: absolute; top: 56px; left: 42px; right: var(--space-4);
+    bottom: var(--space-4);
+    background-image: repeating-linear-gradient(
+      to bottom,
+      transparent 0 25px,
+      var(--bone-14) 25px 26px
+    );
+  }
+  .lyrics-panel header {
+    font-family: var(--font-display);
+    font-style: italic;
+    font-weight: 300;
+    font-size: 20px;
+    line-height: 1.1;
+    color: var(--bone-100);
+    margin-bottom: 4px;
+  }
+  .lyrics-panel .v2-tag {
+    font-family: var(--font-mono);
+    font-size: 9.5px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--rose-500);
+    padding-left: 42px;
+  }
+  .lyrics-panel .lyrics-empty {
+    margin-top: auto;
+    padding-left: 42px;
+    font-family: var(--font-display);
+    font-style: italic;
+    font-size: 14px;
+    color: var(--bone-30);
+    line-height: 1.8;
+  }
+
+  /* ------ Code panel — the protagonist ------------------------------ */
+  .code-panel {
+    grid-area: code;
+    background: var(--ink-800);
+    border: 1px solid var(--bone-14);
+    border-radius: var(--r-md);
+    display: flex; flex-direction: column;
+    overflow: hidden;
+    position: relative;
+    min-height: 0;
+  }
+  .code-panel::before {
+    /* warm glow at top — tape-deck LED spill */
+    content: "";
+    position: absolute; top: -40px; left: 0; right: 0; height: 120px;
+    background: radial-gradient(ellipse at 50% 100%, var(--amber-300), transparent 60%);
+    pointer-events: none;
+  }
+
+  .player-strip {
+    display: flex; align-items: center; gap: var(--space-3);
+    padding: var(--space-3) var(--space-4);
+    border-bottom: 1px solid var(--bone-14);
+    position: relative; z-index: 1;
+  }
+  .play-btn {
+    width: 44px; height: 44px; border-radius: 50%;
+    background: var(--amber-500);
+    color: var(--ink-900);
+    display: flex; align-items: center; justify-content: center;
+    transition: transform .2s var(--ease-standard), box-shadow .3s var(--ease-standard);
+    box-shadow: 0 0 0 0 var(--amber-glow);
+    flex-shrink: 0;
+  }
+  .play-btn:hover { transform: scale(1.05); box-shadow: 0 0 28px var(--amber-glow); }
+  .play-btn svg { width: 16px; height: 16px; fill: currentColor; }
+  .play-btn[data-state="playing"] { animation: pulse 1.8s infinite var(--ease-standard); }
+  @keyframes pulse {
+    0%, 100% { box-shadow: 0 0 0 0 var(--amber-glow); }
+    50% { box-shadow: 0 0 32px 4px var(--amber-glow); }
+  }
+
+  .timecode {
+    font-family: var(--font-mono);
+    font-variant-numeric: tabular-nums;
+    font-size: 13px;
+    letter-spacing: 0.02em;
+    color: var(--bone-60);
+  }
+  .timecode .current { color: var(--bone-100); }
+
+  .scrub {
+    flex: 1;
+    height: 2px;
+    background: var(--bone-14);
+    border-radius: 2px;
+    position: relative;
+    overflow: hidden;
+  }
+  .scrub-fill {
+    position: absolute; top: 0; left: 0; bottom: 0;
+    width: 40%;
+    background: linear-gradient(to right, var(--rose-500), var(--amber-500));
+    border-radius: 2px;
+  }
+
+  /* Tape reels — decorative, two concentric circles, rotating when playing */
+  .tape-reels {
+    display: flex; gap: 6px;
+  }
+  .reel {
+    width: 22px; height: 22px; border-radius: 50%;
+    border: 1.5px solid var(--bone-30);
+    position: relative;
+    transition: border-color .3s var(--ease-standard);
+  }
+  .reel::before {
+    content: ""; position: absolute; inset: 5px;
+    border-radius: 50%;
+    border: 1px dashed var(--bone-30);
+  }
+  .play-btn[data-state="playing"] ~ .tape-reels .reel {
+    animation: spin 2.4s linear infinite;
+    border-color: var(--amber-500);
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  .code-body {
+    flex: 1;
+    font-family: var(--font-mono);
+    font-size: 13.5px;
+    line-height: 1.75;
+    padding: var(--space-4) var(--space-5);
+    color: var(--bone-60);
+    overflow-y: auto;
+    position: relative;
+    z-index: 1;
+  }
+  .code-body .layer-marker {
+    color: var(--rose-500);
+    font-style: italic;
+    margin-top: 14px;
+    display: block;
+  }
+  .code-body .layer-marker:first-child { margin-top: 0; }
+  .code-body .kw   { color: var(--amber-500); }
+  .code-body .str  { color: var(--bone-100); }
+  .code-body .num  { color: var(--sage-500); }
+  .code-body .line.active {
+    color: var(--bone-100);
+    position: relative;
+  }
+  .code-body .line.active::before {
+    /* thin amber tick in the margin — shows current beat */
+    content: "";
+    position: absolute;
+    left: calc(var(--space-5) * -1 + 16px);
+    top: 6px; bottom: 6px;
+    width: 2px;
+    background: var(--amber-500);
+    box-shadow: 0 0 12px var(--amber-glow);
+  }
+
+  /* ------ Edit bar (bottom strip) ---------------------------------- */
+  .edit-bar {
+    grid-area: edit;
+    background: var(--ink-800);
+    border: 1px solid var(--bone-14);
+    border-radius: var(--r-md);
+    padding: var(--space-3) var(--space-4);
+    display: flex; align-items: center; gap: var(--space-3);
+  }
+  .presets {
+    display: flex; gap: var(--space-2);
+  }
+  .preset-key {
+    font-family: var(--font-display);
+    font-weight: 400;
+    font-size: 14px;
+    letter-spacing: -0.005em;
+    padding: 10px 18px;
+    border: 1px solid var(--bone-14);
+    border-radius: var(--r-sm);
+    background: var(--ink-700);
+    color: var(--bone-100);
+    transition:
+      transform .12s var(--ease-standard),
+      background-color .2s var(--ease-standard),
+      border-color .2s var(--ease-standard);
+    position: relative;
+  }
+  .preset-key:hover {
+    border-color: var(--amber-500);
+    background: var(--ink-600);
+    transform: translateY(-1px);
+  }
+  .preset-key:active { transform: translateY(0); }
+  .preset-key.flash {
+    animation: flash 420ms var(--ease-emphasis);
+  }
+  @keyframes flash {
+    0%   { box-shadow: 0 0 0 0 var(--amber-glow); }
+    40%  { box-shadow: 0 0 24px 2px var(--amber-glow); border-color: var(--amber-500); }
+    100% { box-shadow: 0 0 0 0 var(--amber-glow); }
+  }
+
+  .prompt-wrap {
+    flex: 1;
+    display: flex; align-items: center; gap: var(--space-2);
+    padding: 10px 14px;
+    border: 1px solid var(--bone-14);
+    border-radius: var(--r-sm);
+    background: var(--ink-900);
+    position: relative;
+    transition: border-color .2s var(--ease-standard);
+  }
+  .prompt-wrap:focus-within { border-color: var(--amber-500); }
+  .prompt-wrap .chevron {
+    font-family: var(--font-mono);
+    color: var(--amber-500);
+    font-size: 14px;
+    user-select: none;
+  }
+  .prompt-input {
+    flex: 1;
+    font-family: var(--font-mono);
+    font-size: 13px;
+    letter-spacing: 0.02em;
+    color: var(--bone-100);
+    outline: none;
+  }
+  .prompt-input::placeholder { color: var(--bone-30); font-style: italic; }
+
+  /* Typewriter caret animation — subtle, editorial                     */
+  .prompt-wrap::after {
+    content: "";
+    position: absolute; right: 14px; top: 50%; transform: translateY(-50%);
+    width: 1px; height: 16px; background: var(--amber-500);
+    animation: caret 1.05s steps(2) infinite;
+    opacity: 0;
+  }
+  .prompt-wrap:focus-within::after { opacity: 1; }
+  @keyframes caret { 0%, 49% { opacity: 1; } 50%, 100% { opacity: 0; } }
+
+  /* ------------------------------------------------------------------ */
+  /*  Reveal overlay                                                    */
+  /* ------------------------------------------------------------------ */
+  .reveal-overlay {
+    position: fixed; inset: 0;
+    background: radial-gradient(ellipse at 50% 45%, var(--ink-800) 0%, var(--ink-950) 80%);
+    z-index: 900;
+    display: none;
+    align-items: center; justify-content: center;
+  }
+  .reveal-overlay.active { display: flex; }
+  .reveal-overlay canvas {
+    width: min(80vw, 900px);
+    height: min(60vh, 520px);
+    display: block;
+  }
+  .reveal-overlay .hint {
+    position: absolute; bottom: var(--space-5); left: 0; right: 0;
+    text-align: center;
+    font-family: var(--font-mono);
+    font-size: 11px;
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+    color: var(--bone-30);
+  }
+
+  /* Demo-only replay button — floats in corner                         */
+  .replay-fab {
+    position: fixed; bottom: 28px; right: 28px;
+    font-family: var(--font-display);
+    font-style: italic;
+    font-weight: 300;
+    font-size: 15px;
+    color: var(--ink-900);
+    background: var(--amber-500);
+    padding: 10px 20px;
+    border-radius: 999px;
+    box-shadow: 0 0 30px var(--amber-glow), 0 6px 22px rgba(0,0,0,.4);
+    z-index: 999;
+    transition: transform .2s var(--ease-standard);
+  }
+  .replay-fab:hover { transform: translateY(-2px); }
+  .replay-fab::before { content: "▶  "; font-style: normal; font-size: 10px; }
+
+  /* ------------------------------------------------------------------ */
+  /*  Staggered entrance                                                */
+  /* ------------------------------------------------------------------ */
+  .enter { animation: enterUp .9s both var(--ease-emphasis); }
+  @keyframes enterUp {
+    0%   { opacity: 0; transform: translateY(14px); }
+    100% { opacity: 1; transform: translateY(0); }
+  }
+  .wordmark.enter       { animation-delay:  40ms; }
+  .nav-meta.enter       { animation-delay: 120ms; }
+  .nav-right.enter      { animation-delay: 200ms; }
+  .lyrics-panel.enter   { animation-delay: 280ms; }
+  .code-panel.enter     { animation-delay: 360ms; }
+  .edit-bar.enter       { animation-delay: 480ms; }
+
+  /* ------------------------------------------------------------------ */
+  /*  Prefers-reduced-motion — strict WCAG compliance                   */
+  /* ------------------------------------------------------------------ */
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+      animation-duration: 0.001ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.001ms !important;
+    }
+    body::after { animation: none; }
+    .play-btn[data-state="playing"] { animation: none; }
+  }
+
+  /* ------------------------------------------------------------------ */
+  /*  Screen-reader utility                                             */
+  /* ------------------------------------------------------------------ */
+  .sr-only {
+    position: absolute; width: 1px; height: 1px;
+    padding: 0; margin: -1px; overflow: hidden;
+    clip: rect(0,0,0,0); white-space: nowrap; border: 0;
+  }
+</style>
+</head>
+<body>
+
+<!-- Top nav ----------------------------------------------------------- -->
+<nav class="topnav" aria-label="Primary">
+  <h1 class="wordmark enter">vibe<span class="dot" aria-hidden="true"></span><em>origin</em></h1>
+  <span class="nav-meta enter">V1α · Lo-fi Bedroom Pop</span>
+  <div class="nav-right enter">
+    <span class="pill" role="status" aria-live="polite">API Connected</span>
+  </div>
+</nav>
+
+<!-- Main stage -------------------------------------------------------- -->
+<main class="stage" aria-label="Vibe Origin workspace">
+
+  <!-- Lyrics panel (V1α: greyed placeholder for V2 deferred) -->
+  <aside class="lyrics-panel enter" aria-label="Lyrics panel (coming in V2)">
+    <header>Lyrics Room</header>
+    <div class="v2-tag" aria-label="Version 2 feature">V2 · not yet</div>
+    <p class="lyrics-empty">
+      words will live here<br>
+      once the song is ready<br>
+      to say something
+    </p>
+  </aside>
+
+  <!-- Code panel — protagonist -->
+  <section class="code-panel enter" aria-label="Generated Strudel code and playback">
+    <div class="player-strip">
+      <button class="play-btn" data-state="playing" aria-label="Toggle playback">
+        <svg viewBox="0 0 16 16" aria-hidden="true"><rect x="3" y="2" width="3" height="12" rx="1"/><rect x="10" y="2" width="3" height="12" rx="1"/></svg>
+      </button>
+      <div class="timecode" aria-live="polite">
+        <span class="current">00:12</span> / 00:30
+      </div>
+      <div class="scrub" role="progressbar" aria-valuenow="40" aria-valuemin="0" aria-valuemax="100" aria-label="Playback position">
+        <div class="scrub-fill"></div>
+      </div>
+      <div class="tape-reels" aria-hidden="true">
+        <div class="reel"></div>
+        <div class="reel"></div>
+      </div>
+    </div>
+
+    <pre class="code-body" aria-label="Strudel code, live"><code><span class="layer-marker">// layer: drums</span>
+<span class="kw">stack</span>(
+  <span class="kw">s</span>(<span class="str">"bd ~ hh ~ sd ~ hh ~"</span>).<span class="kw">gain</span>(<span class="num">0.78</span>),
+
+<span class="layer-marker">// layer: bass</span>
+  <span class="kw">note</span>(<span class="str">"c2 . g2 . f2 . g2 ."</span>).<span class="kw">s</span>(<span class="str">"sawtooth"</span>).<span class="kw">lpf</span>(<span class="num">420</span>),
+
+<span class="layer-marker">// layer: chord</span>
+<span class="line active">  <span class="kw">note</span>(<span class="str">"&lt;cmaj7 fmaj7 am7 g7&gt;"</span>).<span class="kw">s</span>(<span class="str">"rhodes"</span>).<span class="kw">room</span>(<span class="num">0.7</span>),</span>
+
+<span class="layer-marker">// layer: vocal</span>
+  <span class="kw">sample</span>(<span class="str">"hum"</span>).<span class="kw">gain</span>(<span class="num">0.92</span>).<span class="kw">room</span>(<span class="num">0.35</span>),
+
+<span class="layer-marker">// layer: ambience</span>
+  <span class="kw">sample</span>(<span class="str">"vinyl"</span>).<span class="kw">gain</span>(<span class="num">0.14</span>)
+)</code></pre>
+  </section>
+
+  <!-- Edit bar -->
+  <div class="edit-bar enter" aria-label="Edit controls">
+    <div class="presets" role="group" aria-label="Preset edits">
+      <button class="preset-key" data-preset="dreamier">再梦一点</button>
+      <button class="preset-key" data-preset="punchier">换鼓</button>
+      <button class="preset-key" data-preset="warmer">更暖</button>
+    </div>
+    <label class="prompt-wrap" for="promptInput">
+      <span class="chevron" aria-hidden="true">›</span>
+      <span class="sr-only">Tell me what to change</span>
+      <input id="promptInput" class="prompt-input" type="text" placeholder="告诉我你想怎么改 — 例如，副歌再长 4 拍" autocomplete="off">
+    </label>
+  </div>
+
+</main>
+
+<!-- Reveal overlay (demo) --------------------------------------------- -->
+<div class="reveal-overlay" id="revealOverlay" aria-hidden="true">
+  <canvas id="revealCanvas"></canvas>
+  <div class="hint">hum → waveform → sparks → code</div>
+</div>
+
+<!-- Floating replay demo button -->
+<button class="replay-fab" id="replayFab" aria-label="Replay reveal animation demo">Replay intro</button>
+
+<script>
+/* -------------------------------------------------------------------- */
+/*  Demo-only: interaction stubs (the real wiring lives in the product) */
+/* -------------------------------------------------------------------- */
+
+/* Preset buttons flash — visual feedback                               */
+document.querySelectorAll('.preset-key').forEach(btn => {
+  btn.addEventListener('click', () => {
+    btn.classList.remove('flash');
+    void btn.offsetWidth;
+    btn.classList.add('flash');
+  });
+});
+
+/* -------------------------------------------------------------------- */
+/*  Reveal animation — the signature moment                             */
+/*  Phases (total ≈ 2.6s):                                              */
+/*    1.  waveform draws       (0–620ms)                                */
+/*    2.  waveform → sparks    (620–1150ms)                             */
+/*    3.  sparks → code grows  (1150–2200ms)                            */
+/*    4.  landing / glow       (2200–2600ms)                            */
+/* -------------------------------------------------------------------- */
+const canvas = document.getElementById('revealCanvas');
+const overlay = document.getElementById('revealOverlay');
+const codeSample = `// layer: drums
+s("bd ~ hh ~ sd ~ hh ~").gain(0.78)
+
+// layer: bass
+note("c2 . g2 . f2 . g2 .").s("sawtooth")
+
+// layer: chord
+note("<cmaj7 fmaj7 am7 g7>").s("rhodes")
+
+// layer: vocal
+sample("hum").gain(0.92)
+
+// layer: ambience
+sample("vinyl").gain(0.14)`;
+
+function buildWaveform(n) {
+  const w = new Float32Array(n);
+  for (let i = 0; i < n; i++) {
+    const t = i / n;
+    w[i] = Math.sin(t * Math.PI * 18) * (0.5 - Math.abs(t - 0.5)) * 2
+         + (Math.random() - 0.5) * 0.08;
+  }
+  return w;
+}
+
+function easeOutCubic(p) { return 1 - Math.pow(1 - p, 3); }
+function easeInOutCubic(p) { return p < 0.5 ? 4*p*p*p : 1 - Math.pow(-2*p + 2, 3)/2; }
+
+async function playReveal() {
+  overlay.classList.add('active');
+  overlay.setAttribute('aria-hidden', 'false');
+
+  /* Respect reduced motion: skip animation entirely                     */
+  if (matchMedia('(prefers-reduced-motion: reduce)').matches) {
+    await new Promise(r => setTimeout(r, 200));
+    overlay.classList.remove('active');
+    overlay.setAttribute('aria-hidden', 'true');
+    return;
+  }
+
+  const dpr = Math.min(2, devicePixelRatio || 1);
+  const W = canvas.clientWidth * dpr;
+  const H = canvas.clientHeight * dpr;
+  canvas.width = W; canvas.height = H;
+  const ctx = canvas.getContext('2d');
+  ctx.scale(dpr, dpr);
+  const cw = canvas.clientWidth, chh = canvas.clientHeight;
+
+  const waveform = buildWaveform(480);
+  const amber = getComputedStyle(document.documentElement).getPropertyValue('--amber-500').trim() || '#ff9e3d';
+  const bone  = getComputedStyle(document.documentElement).getPropertyValue('--bone-100').trim() || '#f3ecdf';
+  const rose  = getComputedStyle(document.documentElement).getPropertyValue('--rose-500').trim() || '#c8695a';
+
+  const animate = (ms, draw) => new Promise(res => {
+    const t0 = performance.now();
+    const step = (now) => {
+      const p = Math.min(1, (now - t0) / ms);
+      draw(p);
+      if (p < 1) requestAnimationFrame(step); else res();
+    };
+    requestAnimationFrame(step);
+  });
+
+  /* Phase 1 — waveform */
+  await animate(620, (p) => {
+    ctx.clearRect(0, 0, cw, chh);
+    ctx.strokeStyle = rose;
+    ctx.lineWidth = 1.6;
+    ctx.globalAlpha = easeOutCubic(p);
+    ctx.beginPath();
+    const extent = Math.floor(waveform.length * easeOutCubic(p));
+    for (let i = 0; i < extent; i++) {
+      const x = (i / waveform.length) * cw;
+      const y = chh/2 + waveform[i] * (chh/3);
+      i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+    }
+    ctx.stroke();
+    ctx.globalAlpha = 1;
+  });
+
+  /* Phase 2 — waveform disintegrates into sparks */
+  const sparks = Array.from(waveform, (v, i) => {
+    const x = (i / waveform.length) * cw;
+    const y = chh/2 + v * (chh/3);
+    return {
+      x0: x, y0: y,
+      vx: (Math.random() - 0.5) * 120,
+      vy: (Math.random() - 0.8) * 180, // biased upward
+      hue: Math.random()
+    };
+  }).filter((_, i) => i % 2 === 0); // ~240 sparks
+
+  await animate(530, (p) => {
+    ctx.fillStyle = `rgba(7,6,10, ${0.35 + p * 0.15})`;
+    ctx.fillRect(0, 0, cw, chh);
+    const eased = easeInOutCubic(p);
+    for (const s of sparks) {
+      const x = s.x0 + s.vx * eased * 0.6;
+      const y = s.y0 + s.vy * eased * 0.6 + (eased * eased * 40);
+      const a = 1 - eased;
+      const size = 1.6 + (1 - eased) * 1.4;
+      ctx.fillStyle = s.hue > 0.35 ? amber : rose;
+      ctx.globalAlpha = a;
+      ctx.beginPath();
+      ctx.arc(x, y, size, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.globalAlpha = 1;
+  });
+
+  /* Phase 3 — code grows in */
+  const lines = codeSample.split('\n');
+  const lineHeight = Math.max(18, chh / (lines.length + 3));
+  const startY = (chh - lines.length * lineHeight) / 2 + lineHeight * 0.8;
+
+  await animate(1050, (p) => {
+    ctx.fillStyle = 'rgba(7,6,10, 0.18)';
+    ctx.fillRect(0, 0, cw, chh);
+    const total = lines.length;
+    const eased = easeOutCubic(p);
+    const reveal = eased * total;
+    ctx.textBaseline = 'alphabetic';
+    const fontSize = Math.min(18, lineHeight * 0.88);
+    ctx.font = `${fontSize}px 'IBM Plex Mono', monospace`;
+    for (let i = 0; i < lines.length; i++) {
+      const localP = Math.max(0, Math.min(1, reveal - i));
+      if (localP <= 0) continue;
+      const chars = Math.floor(lines[i].length * localP);
+      const text = lines[i].slice(0, chars);
+      const isMarker = text.startsWith('//');
+      ctx.fillStyle = isMarker ? rose : bone;
+      ctx.globalAlpha = Math.min(1, localP * 1.4);
+      const x = cw * 0.22;
+      const y = startY + i * lineHeight;
+      ctx.fillText(text, x, y);
+      /* typewriter caret on the line currently being written */
+      if (localP < 1) {
+        const caretX = x + ctx.measureText(text).width + 1;
+        ctx.fillStyle = amber;
+        ctx.fillRect(caretX, y - fontSize * 0.8, 2, fontSize);
+      }
+    }
+    ctx.globalAlpha = 1;
+  });
+
+  /* Phase 4 — glow settle */
+  await animate(420, (p) => {
+    ctx.save();
+    const eased = easeOutCubic(p);
+    ctx.shadowColor = amber;
+    ctx.shadowBlur = 22 * (1 - eased);
+    ctx.fillStyle = bone;
+    const fontSize = Math.min(18, lineHeight * 0.88);
+    ctx.font = `${fontSize}px 'IBM Plex Mono', monospace`;
+    ctx.globalAlpha = 1;
+    for (let i = 0; i < lines.length; i++) {
+      const isMarker = lines[i].startsWith('//');
+      ctx.fillStyle = isMarker ? rose : bone;
+      ctx.fillText(lines[i], cw * 0.22, startY + i * lineHeight);
+    }
+    ctx.restore();
+  });
+
+  await new Promise(r => setTimeout(r, 220));
+  overlay.classList.remove('active');
+  overlay.setAttribute('aria-hidden', 'true');
+}
+
+document.getElementById('replayFab').addEventListener('click', playReveal);
+
+/* Auto-play the reveal once on first load (demo only) */
+window.addEventListener('load', () => {
+  setTimeout(playReveal, 900);
+});
+</script>
+
+</body>
+</html>
