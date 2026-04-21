@@ -225,6 +225,7 @@
     transition: all 0.15s;
   }
   .lyrics-action:hover { border-color: var(--border-hover); color: var(--text); }
+  .lyrics-panel.v1a-disabled { opacity: 0.35; pointer-events: none; filter: grayscale(0.6); }
 
   .right-panel {
     flex: 1; display: flex; flex-direction: column;
@@ -523,6 +524,19 @@ class EventBus {
   emit(e, d) { (this._l[e] || []).forEach(fn => fn(d)); }
 }
 const bus = new EventBus();
+
+// ============================================================
+// V1AMode — feature flag for V1α (lyrics/TTS disabled by default)
+// ============================================================
+const V1A_MODE = new URLSearchParams(location.search).get('v2') !== '1';
+window.V1A_MODE = V1A_MODE;
+if (V1A_MODE) {
+  const panel = document.querySelector('.lyrics-panel');
+  if (panel) {
+    panel.classList.add('v1a-disabled');
+    panel.setAttribute('aria-disabled', 'true');
+  }
+}
 
 // ============================================================
 // StrudelEngine
