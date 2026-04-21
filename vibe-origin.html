@@ -631,6 +631,7 @@ class EventBus {
   emit(e, d) { (this._l[e] || []).forEach(fn => fn(d)); }
 }
 const bus = new EventBus();
+window.__bus = bus;
 
 // ============================================================
 // V1AMode — feature flag for V1α (lyrics/TTS disabled by default)
