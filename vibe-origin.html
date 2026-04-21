@@ -1229,6 +1229,64 @@ window.__AIBridge = {
 };
 
 // ============================================================
+// EditBridge (V1α)
+// Single-pass rewrite: currentCode + instruction → new Strudel code
+// === EditBridge ===
+// ============================================================
+const PRESET_INSTRUCTIONS = {
+  dreamier: '让整体更梦幻一点：加强 reverb/delay，ambience 层 gain 稍微抬一点，chord voicing 更宽。保留所有 5 层和 hook，保持 bpm 和 .slow() 不变。',
+  punchier: '让鼓组更紧更有力：换更有 punch 的 808/鼓样本，侧重 kick/snare 清晰度。保留所有 5 层和 hook，保持 bpm 和 .slow() 不变。',
+  warmer:   '让整体声音更温暖：bass 加厚，chord 用七和弦/九和弦，lpf 稍微关一点，高频柔化。保留所有 5 层和 hook，保持 bpm 和 .slow() 不变。',
+};
+function presetToPrompt(key) { return PRESET_INSTRUCTIONS[key] || null; }
+
+function buildRewritePrompt(currentCode, instruction) {
+  const system = `你是 Editor-Producer：一位 Lo-fi Bedroom Pop 编辑型制作人。你收到一份已有的 5 层 Strudel 代码和一条修改指令。你的任务是在严格保留所有 5 层（drums/bass/chord/vocal/ambience）和歌曲骨架（bpm、.slow()、结构）的前提下，按指令调整声音/效果/voicing。\n\n硬约束：\n- 必须保留 5 个 layer 注释标记：// layer: drums, // layer: bass, // layer: chord, // layer: vocal, // layer: ambience。\n- 必须保持整体 .slow() 时值与 bpm 不变。\n- 只修改被指令影响的层；其他层保持不变或只做最小化调整。\n- 输出格式严格为 JSON：{"strudel_code": "<完整的 Strudel 代码字符串>"}，不要任何其他解释文字。`;
+  const user = `当前 Strudel 代码：\n\`\`\`\n${currentCode}\n\`\`\`\n\n修改指令：${instruction}\n\n请输出 JSON：{"strudel_code": "..."}。`;
+  return { system, user };
+}
+
+async function rewriteStrudelV1a(currentCode, instruction) {
+  const { system, user } = buildRewritePrompt(currentCode, instruction);
+  let raw;
+  try {
+    raw = await callClaude(system, user);
+  } catch (e) {
+    bus.emit('editError', { reason: 'transport', error: String(e && e.message || e) });
+    const err = new Error('edit transport failed'); err.__v1aHandled = true; throw err;
+  }
+  let code;
+  try {
+    // callClaudeViaHttp returns a parsed object; test stubs return a JSON string.
+    // Normalize to a string then match the {...} slice inline (no new utility).
+    const rawText = typeof raw === 'string' ? raw : JSON.stringify(raw || {});
+    const slice = rawText.match(/\{[\s\S]*\}/);
+    if (!slice) throw new Error('no JSON object in response');
+    const parsed = JSON.parse(slice[0]);
+    code = parsed.strudel_code;
+    if (typeof code !== 'string' || !code.length) throw new Error('no strudel_code field');
+  } catch (e) {
+    bus.emit('editError', { reason: 'parse', raw, error: String(e && e.message || e) });
+    const err = new Error('edit parse failed'); err.__v1aHandled = true; throw err;
+  }
+  const check = assertFiveLayers(code);
+  if (!check.ok) {
+    bus.emit('editError', { reason: 'missing-layers', missing: check.missing, raw: code });
+    const err = new Error('edit missing layers'); err.__v1aHandled = true; throw err;
+  }
+  return { code };
+}
+
+window.__EditBridge = {
+  presetToPrompt,
+  buildRewritePrompt,
+  rewriteStrudelV1a,
+  presets: ['dreamier', 'punchier', 'warmer'],
+  onEditApplied: (fn) => bus.on('edit:applied', fn),
+  onEditError:   (fn) => bus.on('editError', fn),
+};
+
+// ============================================================
 // RevealAnimator (V1α)
 // Ported from docs/design/2026-04-20-v1a-midnight-tape.html:648-824
 // === RevealAnimator ===
