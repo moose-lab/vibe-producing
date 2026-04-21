@@ -998,12 +998,12 @@ melody notes: ${notes}`,
 function buildColdplayPrompt(dna, draftCode) {
   const notes = Array.isArray(dna.snappedNotes) ? dna.snappedNotes.join(' ') : '';
   return {
-    system: `你是 Coldplay-Producer — 负责给 Taylor 的初稿加情感弧线。
+    system: `你是 Coldplay-Producer — 负责给上一阶段的初稿加情感弧线。
 
-输入：melody DNA 和 Taylor 的初稿 Strudel 代码。
+输入：melody DNA 和一段初稿 Strudel 代码。
 任务：在保留所有 5 层和 hook 的前提下，让和声更宽、ambience 更有呼吸、bass 更贴合 mood（当前 mood=${dna.mood}）。
 
-输出规则与 Taylor 完全相同：5 个 layer 标记、顺序固定、JSON 形状一致。
+输出规则与初稿阶段完全相同：5 个 layer 标记、顺序固定、JSON 形状一致。
 不要删除任何层；不要换 bpm；不要改 .cpm/.slow 结构。
 
 5 个 layer 标记必须是 ASCII 英文（不要中文），顺序固定，注释独占一行：
@@ -1056,10 +1056,62 @@ async function callClaude(sys, user) {
   return window.__callClaudeImpl(sys, user);
 }
 
+async function generateStrudelV1a(dna) {
+  const tp = buildTaylorPrompt(dna);
+  let taylor;
+  try {
+    taylor = await callClaude(tp.system, tp.user);
+  } catch (err) {
+    const msg = (err && err.message) || String(err);
+    const reason = msg.includes('JSON') ? 'parse' : 'transport';
+    bus.emit('generateError', { stage: 'taylor', reason, raw: msg });
+    throw err;
+  }
+  const taylorCheck = assertFiveLayers(taylor?.strudel_code || '');
+  if (!taylorCheck.ok) {
+    bus.emit('generateError', {
+      stage: 'taylor',
+      reason: 'missing-layers',
+      missing: taylorCheck.missing,
+      raw: taylor?.strudel_code,
+    });
+    throw new Error('Taylor output missing layers: ' + taylorCheck.missing.join(','));
+  }
+  const cp = buildColdplayPrompt(dna, taylor.strudel_code);
+  let coldplay;
+  try {
+    coldplay = await callClaude(cp.system, cp.user);
+  } catch (err) {
+    const msg = (err && err.message) || String(err);
+    const reason = msg.includes('JSON') ? 'parse' : 'transport';
+    bus.emit('generateError', { stage: 'coldplay', reason, raw: msg });
+    throw err;
+  }
+  const coldplayCheck = assertFiveLayers(coldplay?.strudel_code || '');
+  if (!coldplayCheck.ok) {
+    bus.emit('generateError', {
+      stage: 'coldplay',
+      reason: 'missing-layers',
+      missing: coldplayCheck.missing,
+      raw: coldplay?.strudel_code,
+    });
+    throw new Error('Coldplay output missing layers: ' + coldplayCheck.missing.join(','));
+  }
+  const out = { code: coldplay.strudel_code, taylorRaw: taylor, coldplayRaw: coldplay, dna };
+  bus.emit('ai:generated:v1a', out);
+  return out;
+}
+
+let lastVocalDNA = null;
+bus.on('vocalDNA', d => { lastVocalDNA = d; });
+
 window.__AIBridge = {
   buildTaylorPrompt,
   buildColdplayPrompt,
   assertFiveLayers,
+  generateStrudelV1a,
+  onGenerated: (fn) => bus.on('ai:generated:v1a', fn),
+  onGenerateError: (fn) => bus.on('generateError', fn),
 };
 
 // ============================================================
@@ -1386,41 +1438,71 @@ let lastHumData = null;
 bus.on('hum:detected', d => { lastHumData = d; });
 
 document.getElementById('genBtn').addEventListener('click', async () => {
-  if (!lastHumData) return;
-  if (!apiKey.value) { document.getElementById('apiModal').classList.add('visible'); return; }
+  if (!V1A_MODE) {
+    if (!lastHumData) return;
+    if (!apiKey.value) { document.getElementById('apiModal').classList.add('visible'); return; }
 
-  const btn = document.getElementById('genBtn');
-  btn.disabled = true; btn.classList.add('loading');
+    const btn = document.getElementById('genBtn');
+    btn.disabled = true; btn.classList.add('loading');
 
-  try {
-    const [_, result] = await Promise.all([
-      loadStrudel(),
-      (async () => {
-        const p = buildGenPrompt(lastHumData.notes, lastHumData.bpm, selectedStyle, document.getElementById('textInput').value.trim());
-        return await callClaude(p.system, p.user);
-      })(),
-    ]);
+    try {
+      const [_, result] = await Promise.all([
+        loadStrudel(),
+        (async () => {
+          const p = buildGenPrompt(lastHumData.notes, lastHumData.bpm, selectedStyle, document.getElementById('textInput').value.trim());
+          return await callClaude(p.system, p.user);
+        })(),
+      ]);
 
-    document.getElementById('workspace').classList.remove('hidden');
-    document.getElementById('codeWelcome').classList.add('hidden');
-    document.getElementById('bpmDisplay').textContent = result.bpm || 120;
-    totalBeats = result.total_beats || 48;
+      document.getElementById('workspace').classList.remove('hidden');
+      document.getElementById('codeWelcome').classList.add('hidden');
+      document.getElementById('bpmDisplay').textContent = result.bpm || 120;
+      totalBeats = result.total_beats || 48;
 
-    const code = result.strudel_code;
-    document.getElementById('codeTextarea').value = code;
-    updateCodeHighlight(); updateLineNumbers();
-    document.getElementById('songTitle').textContent = result.title || '—';
-    displayLyrics(result.lyrics);
-    lastCodeForLyrics = code;
+      const code = result.strudel_code;
+      document.getElementById('codeTextarea').value = code;
+      updateCodeHighlight(); updateLineNumbers();
+      document.getElementById('songTitle').textContent = result.title || '—';
+      displayLyrics(result.lyrics);
+      lastCodeForLyrics = code;
 
-    await strudelEval(code);
-    bus.emit('ai:generated', result);
-    saveSession();
-  } catch (err) {
-    console.error('[Generate]', err);
-    alert('生成失败: ' + err.message);
+      await strudelEval(code);
+      bus.emit('ai:generated', result);
+      saveSession();
+    } catch (err) {
+      console.error('[Generate]', err);
+      alert('生成失败: ' + err.message);
+    }
+    btn.disabled = false; btn.classList.remove('loading');
+  } else {
+    if (!lastVocalDNA) return;
+    if (!apiKey.value) apiKey.value = localStorage.getItem('vibe-origin-api-key') || '';
+    if (!apiKey.value) { document.getElementById('apiModal').classList.add('visible'); return; }
+
+    const btn = document.getElementById('genBtn');
+    btn.disabled = true; btn.classList.add('loading');
+
+    try {
+      const [, result] = await Promise.all([
+        loadStrudel(),
+        generateStrudelV1a(lastVocalDNA),
+      ]);
+
+      document.getElementById('workspace').classList.remove('hidden');
+      document.getElementById('codeWelcome').classList.add('hidden');
+      document.getElementById('bpmDisplay').textContent = result.coldplayRaw?.bpm || result.dna?.bpm || 120;
+      document.getElementById('codeTextarea').value = result.code;
+      updateCodeHighlight(); updateLineNumbers();
+      document.getElementById('songTitle').textContent = result.coldplayRaw?.title || '—';
+
+      await strudelEval(result.code);
+      saveSession();
+    } catch (err) {
+      console.error('[Generate V1α]', err);
+      alert('生成失败: ' + err.message);
+    }
+    btn.disabled = false; btn.classList.remove('loading');
   }
-  btn.disabled = false; btn.classList.remove('loading');
 });
 
 // ============================================================
