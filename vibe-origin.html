@@ -605,7 +605,7 @@
     </div>
 
     <!-- Edit bar (S06 DOM only; S07 wires) -->
-    <!-- TODO(S07): EditBridge — attach click handlers on button.preset-key[data-preset] and submit handler on #promptInput -->
+    <!-- wired by EditBridge (S07) -->
     <div class="edit-bar" id="editBar" aria-label="Edit controls">
       <div class="presets" role="group" aria-label="Preset edits">
         <button type="button" class="preset-key" data-preset="dreamier">再梦一点</button>
@@ -1234,7 +1234,7 @@ window.__AIBridge = {
 // === EditBridge ===
 // ============================================================
 const PRESET_INSTRUCTIONS = {
-  dreamier: '让整体更梦幻一点：加强 reverb/delay，ambience 层 gain 稍微抬一点，chord voicing 更宽。保留所有 5 层和 hook，保持 bpm 和 .slow() 不变。',
+  dreamier: '让整体再梦一点：加强 reverb/delay，ambience 层 gain 稍微抬一点，chord voicing 更宽。保留所有 5 层和 hook，保持 bpm 和 .slow() 不变。',
   punchier: '让鼓组更紧更有力：换更有 punch 的 808/鼓样本，侧重 kick/snare 清晰度。保留所有 5 层和 hook，保持 bpm 和 .slow() 不变。',
   warmer:   '让整体声音更温暖：bass 加厚，chord 用七和弦/九和弦，lpf 稍微关一点，高频柔化。保留所有 5 层和 hook，保持 bpm 和 .slow() 不变。',
 };
@@ -1285,6 +1285,63 @@ window.__EditBridge = {
   onEditApplied: (fn) => bus.on('edit:applied', fn),
   onEditError:   (fn) => bus.on('editError', fn),
 };
+
+let isEditing = false;
+async function applyEdit({ source, key, instruction }) {
+  if (isEditing) return;
+  if (!instruction) return;
+  const ta = document.getElementById('codeTextarea');
+  const editBar = document.getElementById('editBar');
+  if (!ta || !editBar) return;
+  const currentCode = ta.value;
+  isEditing = true;
+  editBar.classList.add('loading');
+  const buttons = editBar.querySelectorAll('button.preset-key');
+  const input = document.getElementById('promptInput');
+  buttons.forEach(b => { b.disabled = true; });
+  if (input) input.disabled = true;
+  try {
+    const { code } = await rewriteStrudelV1a(currentCode, instruction);
+    ta.value = code;
+    if (typeof updateCodeHighlight === 'function') updateCodeHighlight();
+    if (typeof updateLineNumbers === 'function') updateLineNumbers();
+    await (window.__strudelEvalImpl || strudelEval)(code);
+    bus.emit('edit:applied', { source, key, instruction, code });
+  } catch (e) {
+    if (!(e && e.__v1aHandled)) console.warn('[EditBridge] applyEdit unexpected', e);
+  } finally {
+    isEditing = false;
+    editBar.classList.remove('loading');
+    buttons.forEach(b => { b.disabled = false; });
+    if (input) input.disabled = false;
+  }
+}
+
+if (typeof V1A_MODE !== 'undefined' && V1A_MODE) {
+  const editBar = document.getElementById('editBar');
+  if (editBar) {
+    editBar.addEventListener('click', (ev) => {
+      const btn = ev.target && ev.target.closest && ev.target.closest('button.preset-key');
+      if (!btn || !editBar.contains(btn)) return;
+      const key = btn.getAttribute('data-preset');
+      const instruction = presetToPrompt(key);
+      if (!instruction) return;
+      applyEdit({ source: 'preset', key, instruction });
+    });
+  }
+  const promptInput = document.getElementById('promptInput');
+  if (promptInput) {
+    promptInput.addEventListener('keydown', (ev) => {
+      if (ev.key !== 'Enter' || ev.shiftKey) return;
+      const raw = promptInput.value || '';
+      const instruction = raw.trim();
+      if (!instruction) { ev.preventDefault(); return; }
+      ev.preventDefault();
+      promptInput.value = '';
+      applyEdit({ source: 'prompt', instruction });
+    });
+  }
+}
 
 // ============================================================
 // RevealAnimator (V1α)
