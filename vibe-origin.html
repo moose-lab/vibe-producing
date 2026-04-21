@@ -761,6 +761,136 @@ function updatePitchUI() {
 }
 
 // ============================================================
+// VocalProcess — denoise + pitch snap + DNA extraction
+// ============================================================
+const KS_MAJOR = [6.35,2.23,3.48,2.33,4.38,4.09,2.52,5.19,2.39,3.66,2.29,2.88];
+const KS_MINOR = [6.33,2.68,3.52,5.38,2.60,3.53,2.54,4.75,3.98,2.69,3.34,3.17];
+const KEY_NAMES = ['C','C#','D','Eb','E','F','F#','G','Ab','A','Bb','B'];
+
+async function denoise(audioBuffer) {
+  const ctx = new OfflineAudioContext(audioBuffer.numberOfChannels, audioBuffer.length, audioBuffer.sampleRate);
+  const src = ctx.createBufferSource();
+  src.buffer = audioBuffer;
+  const hp = ctx.createBiquadFilter();
+  hp.type = 'highpass'; hp.frequency.value = 120; hp.Q.value = 0.707;
+  const lp = ctx.createBiquadFilter();
+  lp.type = 'lowpass'; lp.frequency.value = 6000; lp.Q.value = 0.707;
+  const comp = ctx.createDynamicsCompressor();
+  comp.threshold.value = -30; comp.ratio.value = 12;
+  comp.attack.value = 0.003; comp.release.value = 0.25;
+  src.connect(hp); hp.connect(lp); lp.connect(comp); comp.connect(ctx.destination);
+  src.start(0);
+  return await ctx.startRendering();
+}
+
+function detectKey(notes) {
+  if (!notes || notes.length === 0) return 'C major';
+  const hist = new Array(12).fill(0);
+  for (const n of notes) {
+    const midi = Math.round(12 * Math.log2(n.freq / 440) + 69);
+    hist[((midi % 12) + 12) % 12] += 1;
+  }
+  let bestScore = -Infinity, bestRoot = 0, bestMode = 'major';
+  for (let root = 0; root < 12; root++) {
+    for (const [profile, mode] of [[KS_MAJOR, 'major'], [KS_MINOR, 'minor']]) {
+      let score = 0;
+      for (let i = 0; i < 12; i++) score += hist[(i + root) % 12] * profile[i];
+      if (score > bestScore) { bestScore = score; bestRoot = root; bestMode = mode; }
+    }
+  }
+  return `${KEY_NAMES[bestRoot]} ${bestMode}`;
+}
+
+function pitchSnap(notes, key) {
+  const [rootName, mode] = key.split(' ');
+  const root = KEY_NAMES.indexOf(rootName);
+  const steps = mode === 'minor' ? [0,2,3,5,7,8,10] : [0,2,4,5,7,9,11];
+  const midiToFreq = (m) => 440 * Math.pow(2, (m - 69) / 12);
+  const snNames = ['c','cs','d','eb','e','f','fs','g','ab','a','bb','b'];
+  return notes.map(n => {
+    const midi = Math.round(12 * Math.log2(n.freq / 440) + 69);
+    let best = midi, bestDist = Infinity;
+    const octBase = Math.floor(midi / 12) - 1;
+    for (let k = octBase - 1; k <= octBase + 2; k++) {
+      for (const step of steps) {
+        const cand = root + step + 12 * k;
+        const d = Math.abs(cand - midi);
+        if (d < bestDist) { bestDist = d; best = cand; }
+      }
+    }
+    const pc = ((best % 12) + 12) % 12;
+    const oct = Math.floor(best / 12) - 1;
+    const freq = midiToFreq(best);
+    return {
+      note: KEY_NAMES[pc] + oct,
+      freq,
+      sn: snNames[pc] + oct,
+    };
+  });
+}
+
+function deriveMood(notes, timestamps) {
+  if (!notes || notes.length === 0) return 'neutral';
+  const midiVals = notes.map(n => Math.round(12 * Math.log2(n.freq / 440) + 69));
+  const range = Math.max(...midiVals) - Math.min(...midiVals);
+  const avgGapMs = timestamps.length > 1
+    ? (timestamps[timestamps.length - 1] - timestamps[0]) / (timestamps.length - 1)
+    : 500;
+  if (range >= 12 && avgGapMs < 350) return 'energetic';
+  if (range <= 5 && avgGapMs > 500) return 'calm';
+  return 'wistful';
+}
+
+function deriveGroove(timestamps) {
+  if (!timestamps || timestamps.length < 3) return 'straight';
+  const gaps = [];
+  for (let i = 1; i < timestamps.length; i++) gaps.push(timestamps[i] - timestamps[i - 1]);
+  const mean = gaps.reduce((a, b) => a + b, 0) / gaps.length;
+  if (mean === 0) return 'straight';
+  const variance = gaps.reduce((a, g) => a + (g - mean) * (g - mean), 0) / gaps.length;
+  const cv = Math.sqrt(variance) / mean;
+  if (cv < 0.15) return 'straight';
+  if (cv > 0.40) return 'syncopated';
+  return 'swung';
+}
+
+function extractDNA({ notes, timestamps, captureMs }) {
+  return {
+    key: detectKey(notes),
+    bpm: estimateBPM(timestamps),
+    mood: deriveMood(notes, timestamps),
+    groove: deriveGroove(timestamps),
+  };
+}
+
+function simulateHum(noteList, opts = {}) {
+  const bpm = opts.bpm ?? 100;
+  const sampleRate = opts.sampleRate ?? 44100;
+  const notes = noteList.map(n => {
+    const name = n.replace(/-?\d+$/, '');
+    const octave = parseInt(n.match(/-?\d+$/)[0], 10);
+    const pc = KEY_NAMES.indexOf(name);
+    const midi = pc + 12 * (octave + 1);
+    const freq = 440 * Math.pow(2, (midi - 69) / 12);
+    return { note: n, freq, sn: freqToStrudel(freq) };
+  });
+  const stepMs = Math.round(60000 / bpm);
+  const timestamps = noteList.map((_, i) => 1000 + i * stepMs);
+  const buffer = new Float32Array(sampleRate);
+  const f0 = notes[0]?.freq ?? 440;
+  for (let i = 0; i < sampleRate; i++) {
+    buffer[i] = Math.sin(2 * Math.PI * f0 * (i / sampleRate));
+  }
+  return { notes, timestamps, buffer };
+}
+
+window.__VocalProcess = {
+  denoise, pitchSnap, extractDNA, detectKey, deriveMood, deriveGroove, simulateHum,
+  onVocalDNA: (fn) => bus.on('vocalDNA', fn),
+  _ks: { KS_MAJOR, KS_MINOR, KEY_NAMES },
+};
+
+// ============================================================
 // AIBridge
 // ============================================================
 const apiKey = { value: localStorage.getItem('vibe-origin-api-key') || '' };
