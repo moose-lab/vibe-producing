@@ -835,6 +835,7 @@ let currentLyricIdx = -1;
 let _lyrics = [];
 
 bus.on('strudel:tick', ({ beat }) => {
+  if (V1A_MODE) return;
   if (!_lyrics.length) return;
   let idx = -1;
   for (let i = _lyrics.length - 1; i >= 0; i--) {
@@ -861,6 +862,7 @@ bus.on('strudel:tick', ({ beat }) => {
 });
 
 bus.on('strudel:stopped', () => {
+  if (V1A_MODE) return;
   currentLyricIdx = -1;
   document.querySelectorAll('#lyricsBody .lyric-line').forEach(l => l.className = 'lyric-line far');
 });
@@ -874,13 +876,23 @@ let lastSpokenIdx = -1;
 bus.on('tts:engine-changed', e => { ttsEngine = e; });
 
 bus.on('tts:speak', ({ text, index }) => {
+  if (V1A_MODE) return;
   if (index === lastSpokenIdx) return;
   lastSpokenIdx = index;
   if (ttsEngine === 'web') speakWeb(text);
   else speakEL(text);
 });
 
+window.__ttsSpeak = ({ text, index }) => {
+  if (V1A_MODE) return 'v1a-noop';
+  if (index === lastSpokenIdx) return;
+  lastSpokenIdx = index;
+  if (ttsEngine === 'web') speakWeb(text);
+  else speakEL(text);
+};
+
 function speakWeb(text) {
+  if (V1A_MODE) return 'v1a-noop';
   speechSynthesis.cancel();
   const u = new SpeechSynthesisUtterance(text);
   u.lang = 'zh-CN'; u.rate = 0.9; u.pitch = 1.1; u.volume = 0.7;
@@ -890,6 +902,7 @@ function speakWeb(text) {
 }
 
 async function speakEL(text) {
+  if (V1A_MODE) return 'v1a-noop';
   const key = localStorage.getItem('vibe-origin-elevenlabs-key');
   if (!key) { speakWeb(text); return; }
   try {
@@ -909,7 +922,11 @@ async function speakEL(text) {
 
 speechSynthesis.getVoices();
 speechSynthesis.addEventListener?.('voiceschanged', () => speechSynthesis.getVoices());
-bus.on('strudel:stopped', () => { lastSpokenIdx = -1; speechSynthesis.cancel(); });
+bus.on('strudel:stopped', () => {
+  if (V1A_MODE) { lastSpokenIdx = -1; return; }
+  lastSpokenIdx = -1;
+  speechSynthesis.cancel();
+});
 
 // ============================================================
 // UIController — controls ↔ code sync
@@ -949,6 +966,7 @@ function syncControlsFromCode(code) {
 }
 
 function displayLyrics(lyrics) {
+  if (V1A_MODE) { _lyrics = []; return; }
   _lyrics = lyrics || [];
   const body = document.getElementById('lyricsBody');
   if (!_lyrics.length) { body.innerHTML = '<div class="lyrics-empty">暂无歌词</div>'; return; }
@@ -1044,8 +1062,12 @@ async function triggerReAdapt(code) {
   } catch (err) { console.error('[ReAdapt]', err); }
 }
 
-document.getElementById('reAdaptBtn').addEventListener('click', () => triggerReAdapt(document.getElementById('codeTextarea').value));
+document.getElementById('reAdaptBtn').addEventListener('click', () => {
+  if (V1A_MODE) return;
+  triggerReAdapt(document.getElementById('codeTextarea').value);
+});
 document.getElementById('copyLyricsBtn').addEventListener('click', () => {
+  if (V1A_MODE) return;
   if (!_lyrics.length) return;
   navigator.clipboard.writeText(_lyrics.map(l => l.text).join('\n')).then(() => {
     const b = document.getElementById('copyLyricsBtn');
@@ -1110,6 +1132,7 @@ document.getElementById('stopBtn').addEventListener('click', () => strudelStop()
 
 // Speak button
 document.getElementById('speakBtn').addEventListener('click', () => {
+  if (V1A_MODE) return;
   if (!_lyrics.length) return;
   lastSpokenIdx = -1;
   let i = 0;
