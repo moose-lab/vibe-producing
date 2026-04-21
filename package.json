@@ -1,0 +1,26 @@
+{
+  "name": "vibe-producing",
+  "version": "1.0.0",
+  "description": "**你脑子里有音乐，只是一直没有出口。**",
+  "main": "index.js",
+  "directories": {
+    "doc": "docs"
+  },
+  "scripts": {
+    "test": "npx playwright test"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/moose-lab/vibe-producing.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/moose-lab/vibe-producing/issues"
+  },
+  "homepage": "https://github.com/moose-lab/vibe-producing#readme",
+  "devDependencies": {
+    "@playwright/test": "^1.59.1"
+  }
+}
