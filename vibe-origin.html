@@ -1396,6 +1396,30 @@ window.__AIBridge = {
 })();
 
 // ============================================================
+// V1α error banner + latency snapshot wiring
+// ============================================================
+bus.on('generateError', (e) => {
+  const banner = document.getElementById('errorBanner');
+  const text = document.getElementById('errorText');
+  if (!banner || !text) return;
+  const missing = e && e.missing && e.missing.length ? ' (' + e.missing.join(',') + ')' : '';
+  text.textContent = `${(e && e.stage) || 'unknown'}: ${(e && e.reason) || 'error'}${missing}`;
+  banner.hidden = false;
+});
+bus.on('ai:generated:v1a', () => {
+  const banner = document.getElementById('errorBanner');
+  if (banner) banner.hidden = true;
+});
+bus.on('reveal:done', ({ totalMs }) => {
+  if (window.__latency) window.__latency.revealMs = totalMs;
+});
+document.getElementById('retryBtn')?.addEventListener('click', () => {
+  const banner = document.getElementById('errorBanner');
+  if (banner) banner.hidden = true;
+  document.getElementById('genBtn')?.click();
+});
+
+// ============================================================
 // LyricsSync
 // ============================================================
 let currentLyricIdx = -1;
@@ -1763,24 +1787,21 @@ document.getElementById('genBtn').addEventListener('click', async () => {
     const btn = document.getElementById('genBtn');
     btn.disabled = true; btn.classList.add('loading');
 
+    const t0 = performance.now();
     try {
       const [, result] = await Promise.all([
         loadStrudel(),
         generateStrudelV1a(lastVocalDNA),
       ]);
+      const pipelineMs = performance.now() - t0;
+      window.__latency = { pipelineMs, revealMs: null, budget: 15000 };
+      bus.emit('latency:pipeline', { pipelineMs, budget: 15000, over: pipelineMs > 15000 });
 
-      document.getElementById('workspace').classList.remove('hidden');
-      document.getElementById('codeWelcome').classList.add('hidden');
-      document.getElementById('bpmDisplay').textContent = result.coldplayRaw?.bpm || result.dna?.bpm || 120;
-      document.getElementById('codeTextarea').value = result.code;
-      updateCodeHighlight(); updateLineNumbers();
-      document.getElementById('songTitle').textContent = result.coldplayRaw?.title || '—';
-
-      await strudelEval(result.code);
+      await window.__RevealAnimator.play(result.code, { dna: result.dna, coldplayRaw: result.coldplayRaw });
       saveSession();
     } catch (err) {
       console.error('[Generate V1α]', err);
-      alert('生成失败: ' + err.message);
+      bus.emit('generateError', { stage: 'orchestrator', reason: 'unknown', raw: err.message });
     }
     btn.disabled = false; btn.classList.remove('loading');
   }
