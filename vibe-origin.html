@@ -946,7 +946,86 @@ function buildReAdaptPrompt(code, bpm, style, tb) {
   };
 }
 
-async function callClaude(sys, user) {
+function assertFiveLayers(code) {
+  const required = ['drums', 'bass', 'chord', 'vocal', 'ambience'];
+  const re = /\/\/\s*layer:\s*(drums|bass|chord|vocal|ambience)\b/g;
+  const found = new Set();
+  let m;
+  while ((m = re.exec(code)) !== null) {
+    found.add(m[1]);
+  }
+  const missing = required.filter((r) => !found.has(r));
+  return { ok: missing.length === 0, missing };
+}
+
+function buildTaylorPrompt(dna) {
+  const bpm = dna.bpm;
+  const cycles = Math.round(30 / (60 / bpm * 4));
+  const notes = Array.isArray(dna.snappedNotes) ? dna.snappedNotes.join(' ') : '';
+  return {
+    system: `你是 Taylor-Producer — Lo-fi Bedroom Pop 制作人 agent，擅长把一段哼唱变成有记忆点的 hook loop。
+
+输入：用户的 melody DNA（key / bpm / mood / groove / 已对齐音符）。
+输出：完整的 30 秒 5 层 Strudel loop。
+
+必须使用 5 个 layer 标记，顺序固定，注释独占一行。layer 标记必须是 ASCII 英文（不要中文），格式如下：
+// layer: drums
+// layer: bass
+// layer: chord
+// layer: vocal
+// layer: ambience
+
+Strudel 约束：
+- stack(...) 包裹所有 pattern
+- .cpm(${Math.round(bpm / 4)}) 设置速度
+- .slow(${cycles}) 使总时长 ≈ 30s（cycles = round(30 / (60/bpm * 4))）
+- 鼓用 .bank("RolandTR808")，风格稀疏
+- bass 用 sawtooth + lpf 保持 Lo-fi 温暖
+- chord 用 rhodes + room 营造空间
+- vocal 用 sample("hum") 给用户自己的声音留位置
+- ambience 用 sample("vinyl") 低增益（~0.14）垫底
+
+严格返回 JSON：{"strudel_code":"...","title":"歌名","bpm":${bpm}}
+再次强调：layer 标记必须是 ASCII 英文（// layer: drums 等），不要使用中文「层」字。`,
+    user: `key: ${dna.key}
+bpm: ${dna.bpm}
+mood: ${dna.mood}
+groove: ${dna.groove}
+melody notes: ${notes}`,
+  };
+}
+
+function buildColdplayPrompt(dna, draftCode) {
+  const notes = Array.isArray(dna.snappedNotes) ? dna.snappedNotes.join(' ') : '';
+  return {
+    system: `你是 Coldplay-Producer — 负责给 Taylor 的初稿加情感弧线。
+
+输入：melody DNA 和 Taylor 的初稿 Strudel 代码。
+任务：在保留所有 5 层和 hook 的前提下，让和声更宽、ambience 更有呼吸、bass 更贴合 mood（当前 mood=${dna.mood}）。
+
+输出规则与 Taylor 完全相同：5 个 layer 标记、顺序固定、JSON 形状一致。
+不要删除任何层；不要换 bpm；不要改 .cpm/.slow 结构。
+
+5 个 layer 标记必须是 ASCII 英文（不要中文），顺序固定，注释独占一行：
+// layer: drums
+// layer: bass
+// layer: chord
+// layer: vocal
+// layer: ambience
+
+返回 JSON：{"strudel_code":"...","title":"歌名","bpm":${dna.bpm}}
+再次强调：layer 标记必须是 ASCII 英文（// layer: drums 等），不要使用中文「层」字。`,
+    user: `key: ${dna.key}
+bpm: ${dna.bpm}
+mood: ${dna.mood}
+groove: ${dna.groove}
+melody notes: ${notes}
+Taylor 初稿:
+${draftCode}`,
+  };
+}
+
+async function callClaudeViaHttp(sys, user) {
   if (!apiKey.value) throw new Error('请先设置 Claude API Key');
   const res = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
@@ -971,6 +1050,17 @@ async function callClaude(sys, user) {
   const raw = data.content?.[0]?.text || '';
   return JSON.parse(raw.replace(/```json|```/g, '').trim());
 }
+
+window.__callClaudeImpl = callClaudeViaHttp;
+async function callClaude(sys, user) {
+  return window.__callClaudeImpl(sys, user);
+}
+
+window.__AIBridge = {
+  buildTaylorPrompt,
+  buildColdplayPrompt,
+  assertFiveLayers,
+};
 
 // ============================================================
 // LyricsSync
