@@ -1294,6 +1294,7 @@ async function applyEdit({ source, key, instruction }) {
   const editBar = document.getElementById('editBar');
   if (!ta || !editBar) return;
   const currentCode = ta.value;
+  const tEdit0 = performance.now();
   isEditing = true;
   editBar.classList.add('loading');
   const buttons = editBar.querySelectorAll('button.preset-key');
@@ -1306,6 +1307,9 @@ async function applyEdit({ source, key, instruction }) {
     if (typeof updateCodeHighlight === 'function') updateCodeHighlight();
     if (typeof updateLineNumbers === 'function') updateLineNumbers();
     await (window.__strudelEvalImpl || strudelEval)(code);
+    const editMs = performance.now() - tEdit0;
+    window.__latency = { ...(window.__latency || { pipelineMs: null, revealMs: null, budget: 15000 }), editMs };
+    bus.emit('latency:edit', { editMs, budget: 10000, over: editMs > 10000 });
     bus.emit('edit:applied', { source, key, instruction, code });
   } catch (e) {
     if (!(e && e.__v1aHandled)) console.warn('[EditBridge] applyEdit unexpected', e);
