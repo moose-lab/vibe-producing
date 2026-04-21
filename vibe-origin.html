@@ -739,16 +739,7 @@ function stopMic() {
   document.getElementById('micBtn').classList.remove('recording');
   if (micStream) { micStream.getTracks().forEach(t => t.stop()); micStream = null; }
   if (micCtx) { micCtx.close(); micCtx = null; }
-  if (detectedNotes.length > 0) {
-    const bpm = estimateBPM(noteTimestamps);
-    document.getElementById('bpmTag').textContent = `≈ ${bpm} BPM`;
-    bus.emit('hum:detected', {
-      notes: detectedNotes.map(n => n.note),
-      strudelNotes: detectedNotes.map(n => n.sn),
-      bpm,
-    });
-    document.getElementById('genBtn').disabled = false;
-  }
+  if (detectedNotes.length > 0) _finalizeRecording(detectedNotes, noteTimestamps);
 }
 
 function updatePitchUI() {
@@ -884,8 +875,31 @@ function simulateHum(noteList, opts = {}) {
   return { notes, timestamps, buffer };
 }
 
+function _finalizeRecording(notes, timestamps) {
+  if (!notes || notes.length === 0) return;
+  const bpm = estimateBPM(timestamps);
+  const bpmTagEl = document.getElementById('bpmTag');
+  if (bpmTagEl) bpmTagEl.textContent = `≈ ${bpm} BPM`;
+  bus.emit('hum:detected', {
+    notes: notes.map(n => n.note),
+    strudelNotes: notes.map(n => n.sn),
+    bpm,
+  });
+  const captureMs = timestamps.length > 0 ? (timestamps[timestamps.length - 1] - timestamps[0]) : 0;
+  const dna = extractDNA({ notes, timestamps, captureMs });
+  const snapped = pitchSnap(notes, dna.key);
+  bus.emit('vocalDNA', {
+    ...dna,
+    notes: notes.map(n => n.note),
+    snappedNotes: snapped.map(n => n.note),
+  });
+  const genBtn = document.getElementById('genBtn');
+  if (genBtn) genBtn.disabled = false;
+}
+
 window.__VocalProcess = {
   denoise, pitchSnap, extractDNA, detectKey, deriveMood, deriveGroove, simulateHum,
+  simulateMicEnd: (notes, timestamps) => _finalizeRecording(notes, timestamps),
   onVocalDNA: (fn) => bus.on('vocalDNA', fn),
   _ks: { KS_MAJOR, KS_MINOR, KEY_NAMES },
 };
