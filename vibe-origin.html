@@ -1126,6 +1126,7 @@ async function generateStrudelV1a(dna) {
     const msg = (err && err.message) || String(err);
     const reason = msg.includes('JSON') ? 'parse' : 'transport';
     bus.emit('generateError', { stage: 'taylor', reason, raw: msg });
+    if (err) err.__v1aHandled = true;
     throw err;
   }
   const taylorCheck = assertFiveLayers(taylor?.strudel_code || '');
@@ -1136,7 +1137,9 @@ async function generateStrudelV1a(dna) {
       missing: taylorCheck.missing,
       raw: taylor?.strudel_code,
     });
-    throw new Error('Taylor output missing layers: ' + taylorCheck.missing.join(','));
+    const e = new Error('Taylor output missing layers: ' + taylorCheck.missing.join(','));
+    e.__v1aHandled = true;
+    throw e;
   }
   const cp = buildColdplayPrompt(dna, taylor.strudel_code);
   let coldplay;
@@ -1146,6 +1149,7 @@ async function generateStrudelV1a(dna) {
     const msg = (err && err.message) || String(err);
     const reason = msg.includes('JSON') ? 'parse' : 'transport';
     bus.emit('generateError', { stage: 'coldplay', reason, raw: msg });
+    if (err) err.__v1aHandled = true;
     throw err;
   }
   const coldplayCheck = assertFiveLayers(coldplay?.strudel_code || '');
@@ -1156,7 +1160,9 @@ async function generateStrudelV1a(dna) {
       missing: coldplayCheck.missing,
       raw: coldplay?.strudel_code,
     });
-    throw new Error('Coldplay output missing layers: ' + coldplayCheck.missing.join(','));
+    const e = new Error('Coldplay output missing layers: ' + coldplayCheck.missing.join(','));
+    e.__v1aHandled = true;
+    throw e;
   }
   const out = { code: coldplay.strudel_code, taylorRaw: taylor, coldplayRaw: coldplay, dna };
   bus.emit('ai:generated:v1a', out);
@@ -1789,8 +1795,9 @@ document.getElementById('genBtn').addEventListener('click', async () => {
 
     const t0 = performance.now();
     try {
+      const strudelStubbed = window.__strudelEvalImpl !== strudelEval;
       const [, result] = await Promise.all([
-        loadStrudel(),
+        strudelStubbed ? Promise.resolve() : loadStrudel(),
         generateStrudelV1a(lastVocalDNA),
       ]);
       const pipelineMs = performance.now() - t0;
@@ -1801,7 +1808,9 @@ document.getElementById('genBtn').addEventListener('click', async () => {
       saveSession();
     } catch (err) {
       console.error('[Generate V1α]', err);
-      bus.emit('generateError', { stage: 'orchestrator', reason: 'unknown', raw: err.message });
+      if (!err?.__v1aHandled) {
+        bus.emit('generateError', { stage: 'orchestrator', reason: 'unknown', raw: err?.message });
+      }
     }
     btn.disabled = false; btn.classList.remove('loading');
   }
