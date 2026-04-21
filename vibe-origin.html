@@ -29,6 +29,66 @@
     --radius: 12px;
     --radius-sm: 8px;
     --radius-xs: 6px;
+
+    /* === RevealAnimator === */
+    --amber-500: #ff9e3d;
+    --amber-400: #ffb366;
+    --amber-glow: rgba(255,158,61,.35);
+    --rose-500: #c8695a;
+    --bone-100: #f3ecdf;
+  }
+
+  /* === RevealAnimator === */
+  .sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0,0,0,0);
+    white-space: nowrap;
+    border: 0;
+  }
+  .reveal-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 900;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    background: rgba(7,6,10,0.88);
+  }
+  .reveal-overlay.active { display: flex; }
+  .reveal-overlay canvas {
+    width: min(80vw, 900px);
+    height: min(60vh, 520px);
+  }
+  .error-banner {
+    position: fixed;
+    bottom: 16px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 950;
+    background: rgba(200,105,90,0.95);
+    color: #fff;
+    padding: 10px 16px;
+    border-radius: 8px;
+    display: flex;
+    gap: 12px;
+    align-items: center;
+  }
+  .error-banner[hidden] { display: none; }
+  .error-banner button {
+    background: #fff;
+    color: var(--rose-500);
+    border: none;
+    padding: 4px 10px;
+    border-radius: 4px;
+    cursor: pointer;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .reveal-overlay canvas { opacity: 0; }
   }
 
   body {
@@ -595,6 +655,7 @@ async function strudelEval(code) {
     bus.emit('strudel:error', err.message);
   }
 }
+window.__strudelEvalImpl = strudelEval;
 
 function strudelStop() {
   if (strudelRepl) {
@@ -1115,6 +1176,226 @@ window.__AIBridge = {
 };
 
 // ============================================================
+// RevealAnimator (V1α)
+// Ported from docs/design/2026-04-20-v1a-midnight-tape.html:648-824
+// === RevealAnimator ===
+// ============================================================
+(() => {
+  function easeOutCubic(p) { return 1 - Math.pow(1 - p, 3); }
+  function easeInOutCubic(p) { return p < 0.5 ? 4*p*p*p : 1 - Math.pow(-2*p + 2, 3)/2; }
+
+  function buildWaveform(n) {
+    const w = new Float32Array(n);
+    for (let i = 0; i < n; i++) {
+      const t = i / n;
+      w[i] = Math.sin(t * Math.PI * 18) * (0.5 - Math.abs(t - 0.5)) * 2
+           + (Math.random() - 0.5) * 0.08;
+    }
+    return w;
+  }
+
+  function writeCodeToDom(code, opts) {
+    const codeTextarea = document.getElementById('codeTextarea');
+    if (codeTextarea) codeTextarea.value = code;
+    if (typeof updateCodeHighlight === 'function') updateCodeHighlight();
+    if (typeof updateLineNumbers === 'function') updateLineNumbers();
+    const bpm = opts?.coldplayRaw?.bpm || opts?.dna?.bpm || 120;
+    const title = opts?.coldplayRaw?.title || '—';
+    const songTitle = document.getElementById('songTitle');
+    const bpmDisplay = document.getElementById('bpmDisplay');
+    if (songTitle) songTitle.textContent = title;
+    if (bpmDisplay) bpmDisplay.textContent = bpm;
+    const workspace = document.getElementById('workspace');
+    if (workspace) workspace.classList.remove('hidden');
+    const codeWelcome = document.getElementById('codeWelcome');
+    if (codeWelcome) codeWelcome.classList.add('hidden');
+  }
+
+  async function playReveal(code, opts = {}) {
+    const overlay = document.getElementById('revealOverlay');
+    const canvas = document.getElementById('revealCanvas');
+    const t0 = performance.now();
+    if (overlay) {
+      overlay.classList.add('active');
+      overlay.setAttribute('aria-hidden', 'false');
+    }
+
+    /* Reduced-motion: short-circuit while preserving 4-phase protocol */
+    if (matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      writeCodeToDom(code, opts);
+      await Promise.resolve();
+      bus.emit('reveal:phase', { phase: 'waveform', elapsedMs: performance.now() - t0 });
+      bus.emit('reveal:phase', { phase: 'particles', elapsedMs: performance.now() - t0 });
+      bus.emit('reveal:phase', { phase: 'code', elapsedMs: performance.now() - t0 });
+      bus.emit('reveal:phase', { phase: 'playReady', elapsedMs: performance.now() - t0 });
+      try {
+        await (window.__strudelEvalImpl || strudelEval)(code);
+      } catch (e) {
+        console.warn('[RevealAnimator] strudelEval', e);
+      }
+      if (overlay) {
+        overlay.classList.remove('active');
+        overlay.setAttribute('aria-hidden', 'true');
+      }
+      bus.emit('reveal:done', { totalMs: performance.now() - t0 });
+      return { ok: true };
+    }
+
+    /* Non-reduced-motion: full 4-phase animation */
+    const ctx = canvas ? canvas.getContext('2d') : null;
+    let cw = 0, chh = 0, waveform, amber, bone, rose, sparks, lines, lineHeight, startY;
+    if (canvas && ctx) {
+      const dpr = Math.min(2, devicePixelRatio || 1);
+      const W = canvas.clientWidth * dpr;
+      const H = canvas.clientHeight * dpr;
+      canvas.width = W; canvas.height = H;
+      ctx.scale(dpr, dpr);
+      cw = canvas.clientWidth; chh = canvas.clientHeight;
+      waveform = buildWaveform(480);
+      amber = getComputedStyle(document.documentElement).getPropertyValue('--amber-500').trim() || '#ff9e3d';
+      bone  = getComputedStyle(document.documentElement).getPropertyValue('--bone-100').trim() || '#f3ecdf';
+      rose  = getComputedStyle(document.documentElement).getPropertyValue('--rose-500').trim() || '#c8695a';
+    }
+
+    const animate = (ms, draw) => new Promise(res => {
+      const ts = performance.now();
+      const step = (now) => {
+        const p = Math.min(1, (now - ts) / ms);
+        if (draw && ctx) draw(p);
+        if (p < 1) requestAnimationFrame(step); else res();
+      };
+      requestAnimationFrame(step);
+    });
+
+    /* Phase 1 — waveform */
+    bus.emit('reveal:phase', { phase: 'waveform', elapsedMs: performance.now() - t0 });
+    await animate(620, (p) => {
+      ctx.clearRect(0, 0, cw, chh);
+      ctx.strokeStyle = rose;
+      ctx.lineWidth = 1.6;
+      ctx.globalAlpha = easeOutCubic(p);
+      ctx.beginPath();
+      const extent = Math.floor(waveform.length * easeOutCubic(p));
+      for (let i = 0; i < extent; i++) {
+        const x = (i / waveform.length) * cw;
+        const y = chh/2 + waveform[i] * (chh/3);
+        i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+      }
+      ctx.stroke();
+      ctx.globalAlpha = 1;
+    });
+
+    /* Phase 2 — sparks */
+    bus.emit('reveal:phase', { phase: 'particles', elapsedMs: performance.now() - t0 });
+    if (ctx) {
+      sparks = Array.from(waveform, (v, i) => {
+        const x = (i / waveform.length) * cw;
+        const y = chh/2 + v * (chh/3);
+        return {
+          x0: x, y0: y,
+          vx: (Math.random() - 0.5) * 120,
+          vy: (Math.random() - 0.8) * 180,
+          hue: Math.random()
+        };
+      }).filter((_, i) => i % 2 === 0);
+    }
+    await animate(530, (p) => {
+      ctx.fillStyle = `rgba(7,6,10, ${0.35 + p * 0.15})`;
+      ctx.fillRect(0, 0, cw, chh);
+      const eased = easeInOutCubic(p);
+      for (const s of sparks) {
+        const x = s.x0 + s.vx * eased * 0.6;
+        const y = s.y0 + s.vy * eased * 0.6 + (eased * eased * 40);
+        const a = 1 - eased;
+        const size = 1.6 + (1 - eased) * 1.4;
+        ctx.fillStyle = s.hue > 0.35 ? amber : rose;
+        ctx.globalAlpha = a;
+        ctx.beginPath();
+        ctx.arc(x, y, size, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      ctx.globalAlpha = 1;
+    });
+
+    /* Reveal workspace + write code into DOM at end of phase 2 / start of phase 3 */
+    writeCodeToDom(code, opts);
+
+    /* Phase 3 — code grows in */
+    lines = code.split('\n');
+    lineHeight = Math.max(18, chh / (lines.length + 3));
+    startY = (chh - lines.length * lineHeight) / 2 + lineHeight * 0.8;
+    bus.emit('reveal:phase', { phase: 'code', elapsedMs: performance.now() - t0 });
+    await animate(1050, (p) => {
+      ctx.fillStyle = 'rgba(7,6,10, 0.18)';
+      ctx.fillRect(0, 0, cw, chh);
+      const total = lines.length;
+      const eased = easeOutCubic(p);
+      const reveal = eased * total;
+      ctx.textBaseline = 'alphabetic';
+      const fontSize = Math.min(18, lineHeight * 0.88);
+      ctx.font = `${fontSize}px 'IBM Plex Mono', monospace`;
+      for (let i = 0; i < lines.length; i++) {
+        const localP = Math.max(0, Math.min(1, reveal - i));
+        if (localP <= 0) continue;
+        const chars = Math.floor(lines[i].length * localP);
+        const text = lines[i].slice(0, chars);
+        const isMarker = text.startsWith('//');
+        ctx.fillStyle = isMarker ? rose : bone;
+        ctx.globalAlpha = Math.min(1, localP * 1.4);
+        const x = cw * 0.22;
+        const y = startY + i * lineHeight;
+        ctx.fillText(text, x, y);
+        if (localP < 1) {
+          const caretX = x + ctx.measureText(text).width + 1;
+          ctx.fillStyle = amber;
+          ctx.fillRect(caretX, y - fontSize * 0.8, 2, fontSize);
+        }
+      }
+      ctx.globalAlpha = 1;
+    });
+
+    /* Phase 4 — glow settle */
+    bus.emit('reveal:phase', { phase: 'playReady', elapsedMs: performance.now() - t0 });
+    await animate(420, (p) => {
+      ctx.save();
+      const eased = easeOutCubic(p);
+      ctx.shadowColor = amber;
+      ctx.shadowBlur = 22 * (1 - eased);
+      ctx.fillStyle = bone;
+      const fontSize = Math.min(18, lineHeight * 0.88);
+      ctx.font = `${fontSize}px 'IBM Plex Mono', monospace`;
+      ctx.globalAlpha = 1;
+      for (let i = 0; i < lines.length; i++) {
+        const isMarker = lines[i].startsWith('//');
+        ctx.fillStyle = isMarker ? rose : bone;
+        ctx.fillText(lines[i], cw * 0.22, startY + i * lineHeight);
+      }
+      ctx.restore();
+    });
+
+    await new Promise(r => setTimeout(r, 220));
+    try {
+      await (window.__strudelEvalImpl || strudelEval)(code);
+    } catch (e) {
+      console.warn('[RevealAnimator] strudelEval', e);
+    }
+    if (overlay) {
+      overlay.classList.remove('active');
+      overlay.setAttribute('aria-hidden', 'true');
+    }
+    bus.emit('reveal:done', { totalMs: performance.now() - t0 });
+    return { ok: true };
+  }
+
+  window.__RevealAnimator = {
+    play: playReveal,
+    onPhase: (fn) => bus.on('reveal:phase', fn),
+    onDone: (fn) => bus.on('reveal:done', fn),
+    onLatency: (fn) => bus.on('latency:pipeline', fn)
+  };
+})();
+
+// ============================================================
 // LyricsSync
 // ============================================================
 let currentLyricIdx = -1;
@@ -1550,5 +1831,13 @@ restoreSession();
 console.log('[Vibe Origin] Ready.');
 
 </script>
+<div class="reveal-overlay" id="revealOverlay" aria-hidden="true">
+  <canvas id="revealCanvas" aria-hidden="true"></canvas>
+  <div class="sr-only" id="revealLive" aria-live="polite"></div>
+</div>
+<div id="errorBanner" class="error-banner" hidden aria-live="polite">
+  <span id="errorText"></span>
+  <button id="retryBtn" type="button">重试</button>
+</div>
 </body>
 </html>
