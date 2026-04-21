@@ -237,11 +237,12 @@
   @keyframes spin { to { transform: rotate(360deg); } }
 
   /* === WORKSPACE === */
-  .workspace { flex: 1; display: flex; overflow: hidden; }
+  .workspace { flex: 1; display: grid; grid-template-columns: 260px 1fr; grid-template-rows: 1fr auto; grid-template-areas: "lyrics code" "edit edit"; overflow: hidden; gap: 0; }
   .workspace.hidden { display: none; }
 
   .lyrics-panel {
-    width: 260px; flex-shrink: 0; display: flex; flex-direction: column;
+    grid-area: lyrics;
+    display: flex; flex-direction: column;
     border-right: 1px solid var(--border); background: var(--bg);
   }
   .lyrics-header {
@@ -288,7 +289,8 @@
   .lyrics-panel.v1a-disabled { opacity: 0.35; pointer-events: none; filter: grayscale(0.6); }
 
   .right-panel {
-    flex: 1; display: flex; flex-direction: column;
+    grid-area: code; min-height: 0;
+    display: flex; flex-direction: column;
     background: var(--bg-deep); min-width: 0;
   }
   .transport {
@@ -425,6 +427,37 @@
   ::-webkit-scrollbar { width: 4px; }
   ::-webkit-scrollbar-track { background: transparent; }
   ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.08); border-radius: 2px; }
+
+  /* === EDIT BAR (S06) === */
+  .edit-bar {
+    grid-area: edit;
+    border-top: 1px solid var(--border);
+    background: var(--bg);
+    padding: 10px 16px;
+    display: flex; align-items: center; gap: 10px;
+    min-width: 0;
+  }
+  .edit-bar .presets { display: flex; gap: 6px; flex-shrink: 0; }
+  .edit-bar .preset-key {
+    padding: 6px 14px; border: 1px solid var(--border); border-radius: var(--radius-sm);
+    background: var(--bg-elevated); color: var(--text-secondary);
+    font-family: 'Outfit', sans-serif; font-size: 12px; font-weight: 500;
+    cursor: pointer; transition: all 0.15s;
+  }
+  .edit-bar .preset-key:hover { border-color: var(--green); color: var(--green); background: var(--green-dim); }
+  .edit-bar .preset-key:focus-visible { outline: 2px solid var(--green); outline-offset: 2px; }
+  .edit-bar .prompt-wrap {
+    flex: 1; display: flex; align-items: center; gap: 6px;
+    padding: 6px 12px; border: 1px solid var(--border); border-radius: var(--radius-sm);
+    background: var(--bg-elevated); min-width: 0;
+  }
+  .edit-bar .prompt-wrap:focus-within { border-color: var(--green); }
+  .edit-bar .prompt-input {
+    flex: 1; background: transparent; border: none; outline: none;
+    color: var(--text); font-family: 'JetBrains Mono', monospace; font-size: 12px;
+    min-width: 0;
+  }
+  .edit-bar .prompt-input::placeholder { color: var(--text-dim); }
 </style>
 </head>
 <body>
@@ -569,6 +602,20 @@
         </div>
         <div class="loop-viz" id="loopViz"></div>
       </div>
+    </div>
+
+    <!-- Edit bar (S06 DOM only; S07 wires) -->
+    <!-- TODO(S07): EditBridge — attach click handlers on button.preset-key[data-preset] and submit handler on #promptInput -->
+    <div class="edit-bar" id="editBar" aria-label="Edit controls">
+      <div class="presets" role="group" aria-label="Preset edits">
+        <button type="button" class="preset-key" data-preset="dreamier">再梦一点</button>
+        <button type="button" class="preset-key" data-preset="punchier">换鼓</button>
+        <button type="button" class="preset-key" data-preset="warmer">更暖</button>
+      </div>
+      <label class="prompt-wrap" for="promptInput">
+        <span class="chevron" aria-hidden="true">›</span>
+        <input id="promptInput" class="prompt-input" type="text" placeholder="告诉我你想怎么改 — 例如，副歌再长 4 拍" autocomplete="off">
+      </label>
     </div>
   </div>
 
