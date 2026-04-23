@@ -1442,6 +1442,33 @@ async function applyEdit({ source, key, instruction, value }) {
   }
 }
 
+// Synchronous knob commit: patch trailing chain, reset FXBus, emit latency:edit + edit:applied.
+// No Claude — local regex patch only (editMs < 100).
+function commitKnob(key, value) {
+  const ta = document.getElementById('codeTextarea');
+  if (!ta) return;
+  const t0 = performance.now();
+  const currentCode = ta.value;
+  const result = window.__FXBus.patchTrailingChain(currentCode, key, value);
+  if (!result.ok) {
+    bus.emit('editError', { reason: 'patch-failed', source: 'knob', key });
+    window.__FXBus.reset();
+    return;
+  }
+  ta.value = result.code;
+  if (typeof updateCodeHighlight === 'function') updateCodeHighlight();
+  if (typeof updateLineNumbers === 'function') updateLineNumbers();
+  try {
+    const maybe = (window.__strudelEvalImpl || strudelEval)(result.code);
+    if (maybe && typeof maybe.catch === 'function') maybe.catch(() => {});
+  } catch (_) { /* knob path is best-effort — strudelEval errors must not block bus emits */ }
+  window.__FXBus.reset();
+  const editMs = performance.now() - t0;
+  window.__latency = { ...(window.__latency || { pipelineMs: null, revealMs: null, budget: 15000 }), editMs };
+  bus.emit('latency:edit', { editMs, budget: 10000, over: editMs > 10000, source: 'knob' });
+  bus.emit('edit:applied', { source: 'knob', key, value, code: result.code });
+}
+
 if (typeof V1A_MODE !== 'undefined' && V1A_MODE) {
   const editBar = document.getElementById('editBar');
   if (editBar) {
@@ -1476,6 +1503,34 @@ if (typeof V1A_MODE !== 'undefined' && V1A_MODE) {
       const instruction = sliderToPrompt(key, value);
       if (!instruction) return;
       applyEdit({ source: 'slider', key, instruction, value });
+    });
+  });
+  ['reverbKnob', 'delayKnob'].forEach((id) => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.classList.add('active');
+    el.addEventListener('pointerdown', (ev) => {
+      if (isEditing) return;
+      ev.preventDefault();
+      const key = el.dataset.key;
+      const wetKey = key === 'reverb' ? 'reverbWet' : 'delayWet';
+      const startY = ev.clientY;
+      const startVal = parseFloat(el.dataset.value || '0') || 0;
+      let curVal = startVal;
+      const onMove = (mv) => {
+        const dy = startY - mv.clientY;
+        curVal = Math.round(Math.max(0, Math.min(1, startVal + dy / 100)) * 100) / 100;
+        window.__FXBus[wetKey] = curVal;
+        el.dataset.value = String(curVal);
+        el.setAttribute('aria-valuenow', String(curVal));
+      };
+      const onUp = () => {
+        document.removeEventListener('pointermove', onMove);
+        document.removeEventListener('pointerup', onUp);
+        commitKnob(key, curVal);
+      };
+      document.addEventListener('pointermove', onMove);
+      document.addEventListener('pointerup', onUp);
     });
   });
   const errorStrip = document.getElementById('editErrorStrip');
