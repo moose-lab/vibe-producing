@@ -428,15 +428,38 @@
   ::-webkit-scrollbar-track { background: transparent; }
   ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.08); border-radius: 2px; }
 
-  /* === EDIT BAR (S06) === */
+  /* === EDIT BAR (S06, retrofitted to 2-row in S09) === */
   .edit-bar {
     grid-area: edit;
     border-top: 1px solid var(--border);
     background: var(--bg);
     padding: 10px 16px;
-    display: flex; align-items: center; gap: 10px;
+    display: flex; flex-direction: column; gap: 8px; align-items: stretch;
     min-width: 0;
   }
+  .edit-bar-top { display: flex; align-items: center; gap: 16px; flex-wrap: nowrap; }
+  .edit-bar-bottom { display: flex; align-items: center; gap: 10px; min-width: 0; }
+  .slider-wrap { display: flex; align-items: center; gap: 6px; }
+  .slider-label { font-family: 'Outfit', sans-serif; font-size: 11px; color: var(--text-secondary); }
+  .slider-wrap input[type=range] { width: 80px; }
+  .knob-wrap { display: flex; align-items: center; gap: 6px; }
+  .knob-label { font-family: 'Outfit', sans-serif; font-size: 11px; color: var(--text-secondary); }
+  .knob {
+    width: 22px; height: 22px; border-radius: 50%;
+    border: 1px solid var(--border); background: var(--bg-elevated);
+    pointer-events: none;
+  }
+  .error-strip {
+    background: rgba(239,68,68,0.08);
+    border: 1px solid rgba(239,68,68,0.4);
+    color: #ef4444;
+    padding: 6px 12px;
+    border-radius: var(--radius-sm);
+    font-size: 12px;
+    font-family: 'JetBrains Mono', monospace;
+    transition: opacity 0.2s ease;
+  }
+  .error-strip[hidden] { display: none; }
   .edit-bar .presets { display: flex; gap: 6px; flex-shrink: 0; }
   .edit-bar .preset-key {
     padding: 6px 14px; border: 1px solid var(--border); border-radius: var(--radius-sm);
@@ -607,15 +630,36 @@
     <!-- Edit bar (S06 DOM only; S07 wires) -->
     <!-- wired by EditBridge (S07) -->
     <div class="edit-bar" id="editBar" aria-label="Edit controls">
-      <div class="presets" role="group" aria-label="Preset edits">
-        <button type="button" class="preset-key" data-preset="dreamier">再梦一点</button>
-        <button type="button" class="preset-key" data-preset="punchier">换鼓</button>
-        <button type="button" class="preset-key" data-preset="warmer">更暖</button>
+      <div class="edit-bar-top">
+        <div class="slider-wrap">
+          <span class="slider-label">心情</span>
+          <input id="moodSlider" type="range" min="0" max="1" step="0.01" value="0.5" disabled data-key="mood" aria-label="Mood 忧郁↔轻盈">
+        </div>
+        <div class="slider-wrap">
+          <span class="slider-label">律动</span>
+          <input id="energySlider" type="range" min="0" max="1" step="0.01" value="0.5" disabled data-key="energy" aria-label="Energy 慵懒↔律动">
+        </div>
+        <div class="knob-wrap">
+          <span class="knob-label">Rev</span>
+          <div id="reverbKnob" class="knob" role="slider" data-key="reverb" aria-label="Reverb" aria-valuemin="0" aria-valuemax="1" aria-valuenow="0" data-value="0" tabindex="-1"></div>
+        </div>
+        <div class="knob-wrap">
+          <span class="knob-label">Dly</span>
+          <div id="delayKnob" class="knob" role="slider" data-key="delay" aria-label="Delay" aria-valuemin="0" aria-valuemax="1" aria-valuenow="0" data-value="0" tabindex="-1"></div>
+        </div>
       </div>
-      <label class="prompt-wrap" for="promptInput">
-        <span class="chevron" aria-hidden="true">›</span>
-        <input id="promptInput" class="prompt-input" type="text" placeholder="告诉我你想怎么改 — 例如，副歌再长 4 拍" autocomplete="off">
-      </label>
+      <div class="edit-bar-bottom">
+        <div class="presets" role="group" aria-label="Preset edits">
+          <button type="button" class="preset-key" data-preset="dreamier">再梦一点</button>
+          <button type="button" class="preset-key" data-preset="punchier">换鼓</button>
+          <button type="button" class="preset-key" data-preset="warmer">更暖</button>
+        </div>
+        <label class="prompt-wrap" for="promptInput">
+          <span class="chevron" aria-hidden="true">›</span>
+          <input id="promptInput" class="prompt-input" type="text" placeholder="告诉我你想怎么改 — 例如，副歌再长 4 拍" autocomplete="off">
+        </label>
+      </div>
+      <div id="editErrorStrip" class="error-strip" role="status" aria-live="polite" hidden></div>
     </div>
   </div>
 
@@ -1344,6 +1388,28 @@ if (typeof V1A_MODE !== 'undefined' && V1A_MODE) {
       ev.preventDefault();
       promptInput.value = '';
       applyEdit({ source: 'prompt', instruction });
+    });
+  }
+  const errorStrip = document.getElementById('editErrorStrip');
+  if (errorStrip) {
+    let editErrorTimer = null;
+    const reasonToMessage = (reason) => {
+      if (reason === 'transport')      return '网络出错，请重试';
+      if (reason === 'parse')          return '返回内容解析失败';
+      if (reason === 'missing-layers') return '返回代码缺失音轨，已撤销';
+      if (reason === 'patch-failed')   return '代码修改失败，已撤销';
+      if (reason === 'test')           return '测试提示';
+      return '编辑失败';
+    };
+    bus.on('editError', (payload) => {
+      errorStrip.textContent = reasonToMessage(payload && payload.reason);
+      errorStrip.hidden = false;
+      if (editErrorTimer) clearTimeout(editErrorTimer);
+      editErrorTimer = setTimeout(() => {
+        errorStrip.hidden = true;
+        errorStrip.textContent = '';
+        editErrorTimer = null;
+      }, 4000);
     });
   }
 }
