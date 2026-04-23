@@ -449,6 +449,7 @@
     border: 1px solid var(--border); background: var(--bg-elevated);
     pointer-events: none;
   }
+  .knob.active { pointer-events: auto; cursor: ns-resize; }
   .error-strip {
     background: rgba(239,68,68,0.08);
     border: 1px solid rgba(239,68,68,0.4);
@@ -1111,6 +1112,44 @@ function assertFiveLayers(code) {
   return { ok: missing.length === 0, missing };
 }
 
+// Pure regex-based patcher for the trailing method chain that follows the
+// outermost closing `)` of stack(...). Scoped so layer-level `.room(...)` /
+// `.delay(...)` inside the stack are preserved.
+//   key: 'reverb' -> .room, 'delay' -> .delay
+//   value: clamped to 0..1 and rounded to 2 decimals; <= 0.005 strips.
+function patchTrailingChain(code, key, value) {
+  const methodMap = { reverb: 'room', delay: 'delay' };
+  const method = methodMap[key];
+  if (!method) return { ok: false, reason: 'patch-failed' };
+  if (typeof code !== 'string') return { ok: false, reason: 'patch-failed' };
+  let v = Number(value);
+  if (!Number.isFinite(v)) return { ok: false, reason: 'patch-failed' };
+  v = Math.max(0, Math.min(1, v));
+  v = Math.round(v * 100) / 100;
+  const shouldStrip = v <= 0.005;
+  const anchorRe = /\)(\s*\.[a-zA-Z]+\([^)]*\))*\s*$/;
+  const anchor = anchorRe.exec(code);
+  if (!anchor) return { ok: false, reason: 'patch-failed' };
+  const tailStart = anchor.index;
+  const head = code.slice(0, tailStart);
+  let tail = code.slice(tailStart);
+  const methodRe = new RegExp('\\.' + method + '\\(\\s*[\\d.]+\\s*\\)');
+  const hasMethod = methodRe.test(tail);
+  if (shouldStrip) {
+    if (hasMethod) tail = tail.replace(methodRe, '');
+    return { ok: true, code: head + tail };
+  }
+  const formatted = '.' + method + '(' + String(v) + ')';
+  if (hasMethod) {
+    tail = tail.replace(methodRe, formatted);
+    return { ok: true, code: head + tail };
+  }
+  const trailingWsMatch = tail.match(/\s*$/);
+  const trailingWs = trailingWsMatch ? trailingWsMatch[0] : '';
+  const tailNoWs = tail.slice(0, tail.length - trailingWs.length);
+  return { ok: true, code: head + tailNoWs + formatted + trailingWs };
+}
+
 function buildTaylorPrompt(dna) {
   const bpm = dna.bpm;
   const cycles = Math.round(30 / (60 / bpm * 4));
@@ -1272,6 +1311,20 @@ window.__AIBridge = {
   onGenerated: (fn) => bus.on('ai:generated:v1a', fn),
   onGenerateError: (fn) => bus.on('generateError', fn),
 };
+
+// ============================================================
+// FXBus (V1α) — preview-during-drag value holders (T01/S11).
+// Plain-object value holder; no Web Audio nodes. Knob drag writes
+// wet values here live; commit (T02) resets on release and lets
+// code become single source of truth again.
+// ============================================================
+const FXBus = {
+  reverbWet: 0,
+  delayWet: 0,
+  reset() { this.reverbWet = 0; this.delayWet = 0; },
+  patchTrailingChain,
+};
+window.__FXBus = FXBus;
 
 // ============================================================
 // EditBridge (V1α)
