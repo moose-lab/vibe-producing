@@ -1217,16 +1217,23 @@ ${draftCode}`,
   };
 }
 
+const PROXY_PARAM = new URLSearchParams(location.search).get('proxy');
+const PROXY_URL = PROXY_PARAM === '1'
+  ? 'http://localhost:8787/v1/messages'
+  : (PROXY_PARAM && PROXY_PARAM.startsWith('http') ? PROXY_PARAM : null);
+
 async function callClaudeViaHttp(sys, user) {
-  if (!apiKey.value) throw new Error('请先设置 Claude API Key');
-  const res = await fetch('https://api.anthropic.com/v1/messages', {
+  const endpoint = PROXY_URL || 'https://api.anthropic.com/v1/messages';
+  const headers = { 'Content-Type': 'application/json' };
+  if (!PROXY_URL) {
+    if (!apiKey.value) throw new Error('请先设置 Claude API Key（或用 ?proxy=1 走本地 OAuth）');
+    headers['x-api-key'] = apiKey.value;
+    headers['anthropic-version'] = '2023-06-01';
+    headers['anthropic-dangerous-direct-browser-access'] = 'true';
+  }
+  const res = await fetch(endpoint, {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'x-api-key': apiKey.value,
-      'anthropic-version': '2023-06-01',
-      'anthropic-dangerous-direct-browser-access': 'true',
-    },
+    headers,
     body: JSON.stringify({
       model: 'claude-sonnet-4-20250514',
       max_tokens: 1500,
