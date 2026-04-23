@@ -633,11 +633,11 @@
       <div class="edit-bar-top">
         <div class="slider-wrap">
           <span class="slider-label">心情</span>
-          <input id="moodSlider" type="range" min="0" max="1" step="0.01" value="0.5" disabled data-key="mood" aria-label="Mood 忧郁↔轻盈">
+          <input id="moodSlider" type="range" min="0" max="1" step="0.01" value="0.5" data-key="mood" aria-label="Mood 忧郁↔轻盈">
         </div>
         <div class="slider-wrap">
           <span class="slider-label">律动</span>
-          <input id="energySlider" type="range" min="0" max="1" step="0.01" value="0.5" disabled data-key="energy" aria-label="Energy 慵懒↔律动">
+          <input id="energySlider" type="range" min="0" max="1" step="0.01" value="0.5" data-key="energy" aria-label="Energy 慵懒↔律动">
         </div>
         <div class="knob-wrap">
           <span class="knob-label">Rev</span>
@@ -1285,19 +1285,41 @@ const PRESET_INSTRUCTIONS = {
 };
 function presetToPrompt(key) { return PRESET_INSTRUCTIONS[key] || null; }
 
+const SLIDER_INSTRUCTIONS = {
+  mood: {
+    low:  '让整体更忧郁：minor 化 chord voicing、lpf 收紧、gain 轻微下压，暗色质感。保留所有 5 层和 hook，保持 bpm 和 .slow() 不变。',
+    mid:  '保持当前情绪基调，仅做最小化调整。保留所有 5 层和 hook，保持 bpm 和 .slow() 不变。',
+    high: '让整体更轻盈：major 化 chord voicing、open voicing、lpf 放开，加一点高频 air。保留所有 5 层和 hook，保持 bpm 和 .slow() 不变。',
+  },
+  energy: {
+    low:  '让律动更慵懒：放慢 groove 感，鼓更稀疏、hats off-beat。保留所有 5 层和 hook，保持 bpm 和 .slow() 不变。',
+    mid:  '保持当前律动强度，仅做最小化调整。保留所有 5 层和 hook，保持 bpm 和 .slow() 不变。',
+    high: '让律动更有驱动力：鼓更密、syncopation、加 ghost notes 与 percussion。保留所有 5 层和 hook，保持 bpm 和 .slow() 不变。',
+  },
+};
+function sliderToPrompt(key, value) {
+  const bucket = SLIDER_INSTRUCTIONS[key];
+  if (!bucket) return null;
+  const v = Number(value);
+  if (!Number.isFinite(v)) return null;
+  if (v < 0.34) return bucket.low;
+  if (v < 0.67) return bucket.mid;
+  return bucket.high;
+}
+
 function buildRewritePrompt(currentCode, instruction) {
   const system = `你是 Editor-Producer：一位 Lo-fi Bedroom Pop 编辑型制作人。你收到一份已有的 5 层 Strudel 代码和一条修改指令。你的任务是在严格保留所有 5 层（drums/bass/chord/vocal/ambience）和歌曲骨架（bpm、.slow()、结构）的前提下，按指令调整声音/效果/voicing。\n\n硬约束：\n- 必须保留 5 个 layer 注释标记：// layer: drums, // layer: bass, // layer: chord, // layer: vocal, // layer: ambience。\n- 必须保持整体 .slow() 时值与 bpm 不变。\n- 只修改被指令影响的层；其他层保持不变或只做最小化调整。\n- 输出格式严格为 JSON：{"strudel_code": "<完整的 Strudel 代码字符串>"}，不要任何其他解释文字。`;
   const user = `当前 Strudel 代码：\n\`\`\`\n${currentCode}\n\`\`\`\n\n修改指令：${instruction}\n\n请输出 JSON：{"strudel_code": "..."}。`;
   return { system, user };
 }
 
-async function rewriteStrudelV1a(currentCode, instruction) {
+async function rewriteStrudelV1a(currentCode, instruction, ctx = {}) {
   const { system, user } = buildRewritePrompt(currentCode, instruction);
   let raw;
   try {
     raw = await callClaude(system, user);
   } catch (e) {
-    bus.emit('editError', { reason: 'transport', error: String(e && e.message || e) });
+    bus.emit('editError', { reason: 'transport', error: String(e && e.message || e), source: ctx.source, key: ctx.key });
     const err = new Error('edit transport failed'); err.__v1aHandled = true; throw err;
   }
   let code;
@@ -1311,12 +1333,12 @@ async function rewriteStrudelV1a(currentCode, instruction) {
     code = parsed.strudel_code;
     if (typeof code !== 'string' || !code.length) throw new Error('no strudel_code field');
   } catch (e) {
-    bus.emit('editError', { reason: 'parse', raw, error: String(e && e.message || e) });
+    bus.emit('editError', { reason: 'parse', raw, error: String(e && e.message || e), source: ctx.source, key: ctx.key });
     const err = new Error('edit parse failed'); err.__v1aHandled = true; throw err;
   }
   const check = assertFiveLayers(code);
   if (!check.ok) {
-    bus.emit('editError', { reason: 'missing-layers', missing: check.missing, raw: code });
+    bus.emit('editError', { reason: 'missing-layers', missing: check.missing, raw: code, source: ctx.source, key: ctx.key });
     const err = new Error('edit missing layers'); err.__v1aHandled = true; throw err;
   }
   return { code };
@@ -1324,6 +1346,7 @@ async function rewriteStrudelV1a(currentCode, instruction) {
 
 window.__EditBridge = {
   presetToPrompt,
+  sliderToPrompt,
   buildRewritePrompt,
   rewriteStrudelV1a,
   presets: ['dreamier', 'punchier', 'warmer'],
@@ -1332,7 +1355,7 @@ window.__EditBridge = {
 };
 
 let isEditing = false;
-async function applyEdit({ source, key, instruction }) {
+async function applyEdit({ source, key, instruction, value }) {
   if (isEditing) return;
   if (!instruction) return;
   const ta = document.getElementById('codeTextarea');
@@ -1347,7 +1370,7 @@ async function applyEdit({ source, key, instruction }) {
   buttons.forEach(b => { b.disabled = true; });
   if (input) input.disabled = true;
   try {
-    const { code } = await rewriteStrudelV1a(currentCode, instruction);
+    const { code } = await rewriteStrudelV1a(currentCode, instruction, { source, key });
     ta.value = code;
     if (typeof updateCodeHighlight === 'function') updateCodeHighlight();
     if (typeof updateLineNumbers === 'function') updateLineNumbers();
@@ -1355,7 +1378,7 @@ async function applyEdit({ source, key, instruction }) {
     const editMs = performance.now() - tEdit0;
     window.__latency = { ...(window.__latency || { pipelineMs: null, revealMs: null, budget: 15000 }), editMs };
     bus.emit('latency:edit', { editMs, budget: 10000, over: editMs > 10000 });
-    bus.emit('edit:applied', { source, key, instruction, code });
+    bus.emit('edit:applied', { source, key, instruction, value, code });
   } catch (e) {
     if (!(e && e.__v1aHandled)) console.warn('[EditBridge] applyEdit unexpected', e);
   } finally {
@@ -1390,6 +1413,18 @@ if (typeof V1A_MODE !== 'undefined' && V1A_MODE) {
       applyEdit({ source: 'prompt', instruction });
     });
   }
+  ['moodSlider', 'energySlider'].forEach((id) => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.addEventListener('change', () => {
+      const key = el.dataset.key;
+      const value = parseFloat(el.value);
+      if (!Number.isFinite(value)) return;
+      const instruction = sliderToPrompt(key, value);
+      if (!instruction) return;
+      applyEdit({ source: 'slider', key, instruction, value });
+    });
+  });
   const errorStrip = document.getElementById('editErrorStrip');
   if (errorStrip) {
     let editErrorTimer = null;
