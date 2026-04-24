@@ -805,6 +805,9 @@ bus.on('strudel:stopped', () => {
   [...document.getElementById('loopViz').children].forEach(s => { s.className = 'loop-step off'; s.style.height = '3px'; });
 });
 
+// [M004 DORMANT] Legacy pipeline block — superseded by src/pipeline/ modules.
+// Still defined for back-compat test seams (window.__VocalProcess, window.__AIBridge, etc.).
+// Scheduled for removal in M005 cleanup.
 // ============================================================
 // PitchDetect
 // ============================================================
@@ -909,6 +912,9 @@ function updatePitchUI() {
   document.getElementById('bpmTag').textContent = `≈ ${estimateBPM(noteTimestamps)} BPM`;
 }
 
+// [M004 DORMANT] Legacy pipeline block — superseded by src/pipeline/ modules.
+// Still defined for back-compat test seams (window.__VocalProcess, window.__AIBridge, etc.).
+// Scheduled for removal in M005 cleanup.
 // ============================================================
 // VocalProcess — denoise + pitch snap + DNA extraction
 // ============================================================
@@ -1062,6 +1068,9 @@ window.__VocalProcess = {
   _ks: { KS_MAJOR, KS_MINOR, KEY_NAMES },
 };
 
+// [M004 DORMANT] Legacy pipeline block — superseded by src/pipeline/ modules.
+// Still defined for back-compat test seams (window.__VocalProcess, window.__AIBridge, etc.).
+// Scheduled for removal in M005 cleanup.
 // ============================================================
 // AIBridge
 // ============================================================
@@ -1568,6 +1577,9 @@ if (typeof V1A_MODE !== 'undefined' && V1A_MODE) {
   }
 }
 
+// [M004 DORMANT] Legacy pipeline block — superseded by src/pipeline/ modules.
+// Still defined for back-compat test seams (window.__VocalProcess, window.__AIBridge, etc.).
+// Scheduled for removal in M005 cleanup.
 // ============================================================
 // RevealAnimator (V1α)
 // Ported from docs/design/2026-04-20-v1a-midnight-tape.html:648-824
@@ -2101,8 +2113,61 @@ document.querySelectorAll('.voice-chip[data-tts]').forEach(chip => {
   });
 });
 
-// Mic
-document.getElementById('micBtn').addEventListener('click', () => { isRecording ? stopMic() : startMic(); });
+// === Mic button rewire (M004 S17 T9) ===
+// Replaces legacy startMic/stopMic call. Uses new src/pipeline/ modules.
+// Captures raw audio (MediaRecorder) concurrent with YIN → denoise → Strudel userHum sample.
+// Emits vocalDNA to trigger the Orchestrator IIFE.
+(() => {
+  const micBtn = document.getElementById('micBtn');
+  if (!micBtn) return;
+  let activeCapture = null;
+  let activeWorker = null;
+  // Remove any existing listeners by cloning the node (preserves children & CSS)
+  const fresh = micBtn.cloneNode(true);
+  micBtn.parentNode.replaceChild(fresh, micBtn);
+
+  fresh.addEventListener('click', async () => {
+    if (activeCapture) {
+      // stopping
+      try {
+        const { notes, timestamps, audioBlob } = await activeCapture.stop();
+        activeCapture = null;
+        fresh.classList.remove('recording');
+
+        // Voice track (denoise + WAV + register userHum)
+        if (audioBlob && audioBlob.size > 0 && window.__Pipeline?.voice) {
+          window.__Pipeline.voice.processVoiceTrack(audioBlob)
+            .then(info => bus.emit('userHum:ready', info))
+            .catch(e => console.warn('[mic] voice-track', e));
+        }
+
+        // DNA extraction via Worker
+        try {
+          activeWorker = new Worker(new URL('./src/pipeline/vocal-process.worker.mjs', location.href), { type: 'module' });
+          activeWorker.onmessage = (e) => {
+            const dna = e.data;
+            bus.emit('hum:detected', { notes: dna.notes, strudelNotes: dna.snappedNotes, bpm: dna.bpm });
+            bus.emit('vocalDNA', dna);
+            activeWorker.terminate();
+            activeWorker = null;
+          };
+          activeWorker.postMessage({ type: 'extract', payload: { notes, timestamps } });
+        } catch (e) { console.warn('[mic] worker', e); }
+      } catch (e) {
+        console.warn('[mic] stop', e);
+        activeCapture = null;
+        fresh.classList.remove('recording');
+      }
+    } else {
+      // starting
+      if (!window.__Pipeline?.capture) { console.warn('[mic] pipeline not loaded'); return; }
+      try {
+        activeCapture = await window.__Pipeline.capture.startMic();
+        fresh.classList.add('recording');
+      } catch (e) { console.warn('[mic] start', e); activeCapture = null; }
+    }
+  });
+})();
 
 // Play/Stop
 document.getElementById('playBtn').addEventListener('click', async () => {
@@ -2135,6 +2200,10 @@ document.getElementById('speakBtn').addEventListener('click', () => {
 let lastHumData = null;
 bus.on('hum:detected', d => { lastHumData = d; });
 
+// genBtn: M004 — in real new-pipeline flow, genBtn stays disabled (legacy _finalizeRecording
+// is no longer called from the new mic button path, so genBtn.disabled is never cleared).
+// Handler is retained as a test seam (M002/M003 tests call simulateMicEnd + genBtn.click()).
+// A future M005 cleanup may remove this when tests migrate to the Orchestrator path.
 document.getElementById('genBtn').addEventListener('click', async () => {
   if (!V1A_MODE) {
     if (!lastHumData) return;
