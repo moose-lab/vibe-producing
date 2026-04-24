@@ -9,7 +9,7 @@
   "scripts": {
     "test": "npx playwright test",
     "proxy": "node server/claude-proxy.mjs",
-    "serve": "python3 -m http.server 8080"
+    "serve": "python3 -m http.server 8081"
   },
   "repository": {
     "type": "git",
