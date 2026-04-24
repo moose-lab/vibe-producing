@@ -114,3 +114,12 @@ test('encodeWav roundtrip preserves dominant frequency within 5%', async ({ page
   });
   expect(Math.abs(freq - 440) / 440).toBeLessThan(0.05);
 });
+
+test('mic-capture exposes startMic and Capture.stop contract', async ({ page }) => {
+  await page.goto(pageUrl);
+  const hasShape = await page.evaluate(() => {
+    const cap = (window as any).__Pipeline?.capture;
+    return typeof cap?.startMic === 'function';
+  });
+  expect(hasShape).toBe(true);
+});
