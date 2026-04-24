@@ -665,10 +665,7 @@
   </div>
 
 <script type="module">
-  import './src/pipeline/voice-track.mjs';
-  import './src/pipeline/mic-capture.mjs';
-  import './src/pipeline/ai-bridge.mjs';
-  import './src/pipeline/seed-animator.mjs';
+  import './src/pipeline/index.mjs';
 </script>
 
 <script type="module">
@@ -2250,6 +2247,57 @@ bus.on('strudel:error', msg => {
 restoreSession();
 console.log('[Vibe Origin] Ready.');
 
+// === Orchestrator (M004) ===
+(() => {
+  if (typeof V1A_MODE === 'undefined' || !V1A_MODE) return;
+  let aiReady = false, bloomReady = false, generatedCode = null, animator = null, pipelineT0 = 0;
+  const stage = document.getElementById('seedStage');
+
+  function tryStartPlayback() {
+    if (!aiReady || !bloomReady || !generatedCode) return;
+    const ta = document.getElementById('codeTextarea');
+    if (ta) ta.value = generatedCode;
+    try { (window.__strudelEvalImpl || strudelEval)(generatedCode); } catch (e) { console.warn('[orch] eval', e); }
+    const totalMs = performance.now() - pipelineT0;
+    bus.emit('reveal:done', { totalMs });
+    bus.emit('latency:pipeline', { pipelineMs: totalMs, revealMs: null, budget: 30000, over: totalMs > 30000 });
+  }
+
+  bus.on('vocalDNA', (dna) => {
+    if (!window.__Pipeline || !window.__Pipeline.ai) return;
+    aiReady = false; bloomReady = false; generatedCode = null; pipelineT0 = performance.now();
+    if (stage) { stage.style.display = 'block'; stage.innerHTML = ''; }
+    try {
+      if (window.__Pipeline && window.__Pipeline.animator && stage) {
+        animator = window.__Pipeline.animator.startSeedAnimation(stage, dna);
+        animator.onBloomReady(() => { bloomReady = true; tryStartPlayback(); });
+      } else {
+        // Fallback: immediately set bloomReady if animator unavailable (stub test paths)
+        bloomReady = true;
+      }
+    } catch (e) { console.warn('[orch] animator', e); bloomReady = true; }
+
+    (async () => {
+      try {
+        if (!window.__Pipeline || !window.__Pipeline.ai) {
+          // Animator present but AI module missing — avoid hanging tryStartPlayback
+          aiReady = true; generatedCode = ''; return;
+        }
+        const { code } = await window.__Pipeline.ai.generateStrudelV1a(dna, {
+          onToken: (chunk) => { try { animator && animator.onAIToken && animator.onAIToken(chunk); } catch {} },
+        });
+        generatedCode = code; aiReady = true;
+        bus.emit('ai:generated:v1a', { code, dna });
+        tryStartPlayback();
+      } catch (e) {
+        bus.emit('generateError', { stage: 'ai', reason: e.message || 'error' });
+      }
+    })();
+  });
+
+  bus.on('userHum:ready', () => {}); // future hook
+})();
+
 </script>
 <div class="reveal-overlay" id="revealOverlay" aria-hidden="true">
   <canvas id="revealCanvas" aria-hidden="true"></canvas>
@@ -2259,5 +2307,7 @@ console.log('[Vibe Origin] Ready.');
   <span id="errorText"></span>
   <button id="retryBtn" type="button">重试</button>
 </div>
+<div id="seedStage" class="seed-stage" aria-hidden="true"
+     style="position: absolute; inset: 0; pointer-events: none; z-index: 50; display: none;"></div>
 </body>
 </html>
