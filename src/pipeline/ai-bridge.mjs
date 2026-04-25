@@ -40,7 +40,7 @@ async function callClaudeDirect(sys, user, { onToken, signal } = {}) {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
-      model: 'claude-sonnet-4-5',
+      // model intentionally omitted — proxy CLAUDE_MODEL env (default: claude-opus-4-7) decides
       max_tokens: 2000,
       stream: !!onToken,
       system: sys,

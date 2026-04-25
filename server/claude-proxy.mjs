@@ -5,7 +5,7 @@
 // Supports SSE streaming pass-through when client sends stream:true
 
 import http from 'node:http';
-import { spawn } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import path from 'node:path';
@@ -13,18 +13,38 @@ import path from 'node:path';
 const PORT = Number(process.env.PORT || 8787);
 // Prefer full path to avoid shell-alias resolution issues in sub-process env
 const CLAUDE_BIN = process.env.CLAUDE_BIN || '/opt/homebrew/bin/claude';
-const MODEL = process.env.CLAUDE_MODEL || 'claude-sonnet-4-5';
+const MODEL = process.env.CLAUDE_MODEL || 'claude-opus-4-7';
 const ANTHROPIC_ENDPOINT = 'https://api.anthropic.com/v1/messages';
 const CREDS_PATH = path.join(homedir(), '.claude', '.credentials.json');
 
+function parseOAuth(rawJson) {
+  try {
+    const creds = JSON.parse(rawJson);
+    const oauth = creds?.claudeAiOauth || creds?.oauth || creds;
+    return oauth?.accessToken || oauth?.access_token || null;
+  } catch { return null; }
+}
+
+let authSource = null;
+
 function loadOAuthToken() {
+  // 1. File at ~/.claude/.credentials.json (Linux + older macOS Claude Code)
   try {
     const raw = readFileSync(CREDS_PATH, 'utf8');
-    const creds = JSON.parse(raw);
-    const oauth = creds?.claudeAiOauth || creds?.oauth || creds;
-    const token = oauth?.accessToken || oauth?.access_token;
-    return token || null;
-  } catch { return null; }
+    const tok = parseOAuth(raw);
+    if (tok) { authSource = 'oauth-file'; return tok; }
+  } catch {}
+  // 2. macOS Keychain entry "Claude Code-credentials" (current Claude Code default)
+  if (process.platform === 'darwin') {
+    try {
+      const r = spawnSync('security', ['find-generic-password', '-s', 'Claude Code-credentials', '-w']);
+      if (r.status === 0) {
+        const tok = parseOAuth(r.stdout.toString().trim());
+        if (tok) { authSource = 'oauth-keychain'; return tok; }
+      }
+    } catch {}
+  }
+  return null;
 }
 
 let cachedToken = loadOAuthToken();
@@ -133,7 +153,7 @@ const server = http.createServer(async (req, res) => {
   if (req.method === 'GET' && req.url === '/healthz') {
     res.writeHead(200, { 'Content-Type': 'application/json' });
     return res.end(JSON.stringify({
-      ok: true, mode: authMode, authSource: cachedToken ? 'oauth-file' : 'cli', model: MODEL,
+      ok: true, mode: authMode, authSource: authSource || 'cli', model: MODEL,
     }));
   }
   if (req.method !== 'POST' || req.url !== '/v1/messages') {
